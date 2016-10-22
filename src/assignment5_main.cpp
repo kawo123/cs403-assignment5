@@ -40,8 +40,8 @@ float max_rotat_velocity = 1.5;
 float max_linear_acceleration  = 0.5; 
 float max_rotat_acceleration = 2;
 float max_velocity = 0.75; 
-float radius = 0.18;
-float height = 0.36;
+float robot_radius = 0.18;
+float robot_height = 0.36;
 
 // Helper function to convert ROS Point32 to Eigen Vectors.
 Vector3f ConvertPointToVector(const Point32& point) {
@@ -57,6 +57,11 @@ Point32 ConvertVectorToPoint(const Vector3f& vector) {
   return point;
 }
 
+// Helper function to find the magnitude of Vector2f
+float FindVectorMaginitude(const Vector2f V){
+  return (sqrt(pow(V.x(), 2)+pow(V.y(), 2))); 
+}
+
 bool CheckPointService(
     compsci403_assignment5::CheckPointSrv::Request& req,
     compsci403_assignment5::CheckPointSrv::Response& res) {
@@ -70,7 +75,13 @@ bool CheckPointService(
   // Write code to compute is_obstacle and free_path_length.
 
   float rotation_radius = V.x() / V.y(); 
-  float v_upper_bound = ;
+  const Vector2f C(0, rotation_radius);
+  const float distance = FindVectorMaginitude(C - P);
+  if(distance < (robot_radius + rotation_radius)
+    || distance > (robot_radius - rotation_radius)){
+    is_obstacle = true; 
+    // calculate free path
+  }
 
   //////////////////////////////////////////////////////////
 
@@ -100,6 +111,13 @@ bool ObstaclePointCloudService(
   // Write code here to transform the input point cloud from the Kinect reference frame to the
   // robot's reference frame. Then filter out the points corresponding to ground
   // or heights larger than the height of the robot
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    const Vector3f robot_frame_point = R * point_cloud[i] + T; 
+    if(!(robot_frame_point.z() >=  0
+        || robot_frame_point.z() <= robot_height)){ // 
+      filtered_point_cloud.push_back(robot_frame_point); 
+    } 
+  }
 
   res.P_prime.resize(filtered_point_cloud.size());
   for (size_t i = 0; i < filtered_point_cloud.size(); ++i) {
