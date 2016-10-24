@@ -178,6 +178,14 @@ bool PointCloudToLaserScanService(
   return true;
 }
 
+void GetCommandVel(const Vector2f& V0, const Vector2f& V_tilde, Vector2f* C){
+Vector2f V = V_tilde;
+//limit max speed
+  if(V.norm()>max_velocity){
+    
+  }
+}
+
 bool GetCommandVelService(
     compsci403_assignment5::GetCommandVelSrv::Request& req,
     compsci403_assignment5::GetCommandVelSrv::Response& res) {
@@ -235,6 +243,7 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
 
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
+
 
   command_vel.linear.x = 0; // replace with your calculated linear velocity c_v
   command_vel.angular.z = 0; // replace with your angular calculated velocity c_w
