@@ -69,6 +69,43 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
+void GetFreePath(const sensor_msgs::LaserScan& ranges,
+                 const Vector2f& V,
+                 bool* is_obstacle,
+                 float* free_path_length) {
+//given linear velocity, angular velocity 
+  //which is turned into V and point
+
+  const float min_angle = -28.0;
+  const float max_angle = 28.0;
+  const float increment = 1.0;
+  const float min_range = 0.8;
+  const float max_range = 4.0;
+
+  *is_obstacle = false;
+  *free_path_length = max_range + robot_radius;
+  for(size_t i =0; i<ranges.size(); ++i){
+    //ignore invalid ranges
+    if(ranges[i] < min_range || ranges[i]>max_range){
+      continue;
+    }
+    //compute angle
+    const float angle = min_angle + increment * static_cast<float>(i);
+    //compute laser point
+    const Vector2f P = scan.ranges[i] * Vector2f(cos(angle), sin(angle));
+    // ignore points that are "behind" the robot.
+    if (P.dot(V) <= 0.0) continue;
+    //use a method to calculate the free path
+    // of current point and check if obstacles
+    float current_path_length = scan.range_max + kRobotRadius;
+    bool current_obstacle = false;
+    *free_path_length = min(current_path_length, *free_path_length);
+    //why minimum of the free paths??
+    *is_obstacle = *is_obstacle || current_obstacle;
+  }
+
+}
+
 bool CheckPointService(
     compsci403_assignment5::CheckPointSrv::Request& req,
     compsci403_assignment5::CheckPointSrv::Response& res) {
@@ -178,14 +215,6 @@ bool PointCloudToLaserScanService(
   return true;
 }
 
-void GetCommandVel(const Vector2f& V0, const Vector2f& V_tilde, Vector2f* C){
-Vector2f V = V_tilde;
-//limit max speed
-  if(V.norm()>max_velocity){
-    
-  }
-}
-
 bool GetCommandVelService(
     compsci403_assignment5::GetCommandVelSrv::Request& req,
     compsci403_assignment5::GetCommandVelSrv::Response& res) {
@@ -196,6 +225,7 @@ bool GetCommandVelService(
   // rotational velocity around the z axis, i.e. around the center of rotation
   // of the robot and in counter-clockwise direction
   const Vector2f V(req.v0.x, req.w0.z);
+
 
   for (unsigned int y = 0; y < req.Image.height; ++y) {
     for (unsigned int x = 0; x < req.Image.width; ++x) {
@@ -217,10 +247,65 @@ bool GetCommandVelService(
   }
 
   // Use your code from part 3 to convert the point cloud to a laser scan
+    vector<float> ranges; //laser scan
 
+  const float min_angle = -28.0;
+  const float max_angle = 28.0;
+  const float increment = 1.0;
+  const float min_range = 0.8;
+  const float max_range = 4.0; 
+  const int size = (int) max_angle - min_angle + 1;
+  ranges.resize(size); 
+
+
+
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    ranges[i] = 0; //initializes
+  }
+
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI;
+  //why times 180 / PI?
+
+    const float rounded_angle = round(angle); 
+
+    //why rounded angle?
+    if(rounded_angle >= min_angle && rounded_angle <= max_angle){
+      const int index = (int)(rounded_angle + 28.0);
+      //why not using increment?
+      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
+      if(distance < ranges[index]){
+        ranges[index] = distance; 
+      }
+    }
+  }
   // Implement dynamic windowing approach to find the best velocity command for next time step
 
   // Return the best velocity command
+  //given V0 and depth image which is turned into
+  // point cloud. point cloud turns into laser scan
+  //laser scan turns into best direction?
+  //best direction turns into best velocity.
+  
+
+
+  /*for(size_t i = 0; i<ranges.size(); ++i){
+    const float angle = min_angle + increment * static_cast<float>(i);
+    const Vector2f dir(cos(angle), sin(angle));
+  }
+
+  //ignore directions that lead backwards from V.
+  if(V.dot(dir) <= 0.0) continue; //????
+
+  //compute free path so you can maximize it
+  float current_path_length = max_range + robot_radius;
+  bool current_obstacle = false;
+  GetFreePath(ranges, V, current_obstacle, current_path_length)
+
+
+
+  float best_velocity = 0;*/
+
   // Cv is of type Point32 and its x component is the linear velocity towards forward direction
   // you do not need to fill its other components
   res.Cv.x = 0;
