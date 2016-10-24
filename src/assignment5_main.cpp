@@ -70,7 +70,8 @@ float FindVectorMaginitude(const float x, const float y){
 }
 
 void GetFreePath(const sensor_msgs::LaserScan& ranges,
-                 const Vector2f& V,
+                 const Vector2f& v0,
+                 const Vector2f& w0,
                  bool* is_obstacle,
                  float* free_path_length) {
 //given linear velocity, angular velocity 
@@ -81,28 +82,17 @@ void GetFreePath(const sensor_msgs::LaserScan& ranges,
   const float increment = 1.0;
   const float min_range = 0.8;
   const float max_range = 4.0;
-
+  //central radius not the same as center of rotation
   *is_obstacle = false;
   *free_path_length = max_range + robot_radius;
-  for(size_t i =0; i<ranges.size(); ++i){
-    //ignore invalid ranges
-    if(ranges[i] < min_range || ranges[i]>max_range){
-      continue;
-    }
-    //compute angle
-    const float angle = min_angle + increment * static_cast<float>(i);
-    //compute laser point
-    const Vector2f P = scan.ranges[i] * Vector2f(cos(angle), sin(angle));
-    // ignore points that are "behind" the robot.
-    if (P.dot(V) <= 0.0) continue;
-    //use a method to calculate the free path
-    // of current point and check if obstacles
-    float current_path_length = scan.range_max + kRobotRadius;
-    bool current_obstacle = false;
-    *free_path_length = min(current_path_length, *free_path_length);
-    //why minimum of the free paths??
-    *is_obstacle = *is_obstacle || current_obstacle;
-  }
+  for(size_t i = 0; i<ranges.size(); ++i){
+    const float P = ranges[i];
+    const float centralradius = FindVectorMaginitude(w0/v0);
+    const float d = P - centralradius;
+    const float delta = sqrt(robot_radius * robot_radius - d*d);
+
+
+  } 
 
 }
 
@@ -224,7 +214,7 @@ bool GetCommandVelService(
   // velocity towards forward direction and the z component of w0 is the
   // rotational velocity around the z axis, i.e. around the center of rotation
   // of the robot and in counter-clockwise direction
-  const Vector2f V(req.v0.x, req.w0.z);
+  const Vector2f V(req.v0.x, req.w0.z);//V0
 
 
   for (unsigned int y = 0; y < req.Image.height; ++y) {
@@ -250,7 +240,7 @@ bool GetCommandVelService(
     vector<float> ranges; //laser scan
 
   const float min_angle = -28.0;
-  const float max_angle = 28.0;
+  const float max_angle = 28.0;f
   const float increment = 1.0;
   const float min_range = 0.8;
   const float max_range = 4.0; 
@@ -286,12 +276,28 @@ bool GetCommandVelService(
   // point cloud. point cloud turns into laser scan
   //laser scan turns into best direction?
   //best direction turns into best velocity.
+
+  vector<Vector2f> minimum_points_in_point_cloud;
+
+  //for each increment in ranges in laser scan
+  //look at the minimum point in the range its current looking at
+
   
+  for(size_t i = 0; i<ranges.size(); ++i){
+    Vector2f minimum_point;
+    for(size_t j = 0 ; j <point_cloud.size(); ++j){
 
+      const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI; //should be in radians. depemding if increment is in radians
 
-  /*for(size_t i = 0; i<ranges.size(); ++i){
-    const float angle = min_angle + increment * static_cast<float>(i);
-    const Vector2f dir(cos(angle), sin(angle));
+      const float directionalangle = min_angle+increment*(i);
+      if(angle<=directionalangle+increment/2 && angle>directionalangle-increment/2){ //atan is within the increment
+        float minimum_point_distance = FindVectorMaginitude(minimum_point.x(), minimum_point.y()); 
+        const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
+          if(distance < minimum_point_distance){
+            minimum_point = point_cloud[i];
+        }
+    }
+    }
   }
 
   //ignore directions that lead backwards from V.
@@ -300,11 +306,11 @@ bool GetCommandVelService(
   //compute free path so you can maximize it
   float current_path_length = max_range + robot_radius;
   bool current_obstacle = false;
-  GetFreePath(ranges, V, current_obstacle, current_path_length)
+  GetFreePath(minimum_points_in_point_cloud, V, current_obstacle, current_path_length)
+ //would be double for loop
 
 
-
-  float best_velocity = 0;*/
+  float best_velocity = 0;
 
   // Cv is of type Point32 and its x component is the linear velocity towards forward direction
   // you do not need to fill its other components
