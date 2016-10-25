@@ -69,7 +69,7 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
-void GetFreePath(const sensor_msgs::LaserScan& ranges,
+void GetFreePath(const vector<Vector3f> point_cloud_points,
                  const Vector2f& v0,
                  const Vector2f& w0,
                  bool* is_obstacle,
@@ -85,15 +85,29 @@ void GetFreePath(const sensor_msgs::LaserScan& ranges,
   //central radius not the same as center of rotation
   *is_obstacle = false;
   *free_path_length = max_range + robot_radius;
-  for(size_t i = 0; i<ranges.size(); ++i){
-    const float P = ranges[i];
+  for(size_t i = 0; i<point_cloud_points.size(); ++i){
+    const float P = point_cloud_points[i];
     const float centralradius = FindVectorMaginitude(w0/v0);
     const float d = P - centralradius;
-    const float delta = sqrt(robot_radius * robot_radius - d*d);
+    if(d < robot_radius){
+      *is_obstacle = true;
+      const float delta = sqrt(robot_radius * robot_radius - d*d);
+      const float theta = atan(point_cloud_points[i].y() / point_cloud_points[i].x()); //should be in radians. depemding if increment is in radians
+      *free_path_length = (centralradius - delta)theta;
+      *free_path_length = max(0.0f, *free_path_length);
+    }else{
+      *is_obstacle = false;
+    }
 
+    //free path length is R * theta
 
   } 
 
+}
+
+
+void GetCommandVel(const Vector2f& V0, const Vector2f& V_tilde, Vector2f* C){
+  //didn't do this yet.
 }
 
 bool CheckPointService(
@@ -300,17 +314,32 @@ bool GetCommandVelService(
     }
   }
 
-  //ignore directions that lead backwards from V.
-  if(V.dot(dir) <= 0.0) continue; //????
+  vector<float> values(ranges.size(), 0.0);
 
-  //compute free path so you can maximize it
+  for(size_t i = 0 ; i<values.size(); ++i){
+  //ignore directions that lead backwards from V.
+  //if(V.dot(dir) <= 0.0) continue; //????
+
+  //compute free path and collect all the
+    //free path lengths to the obstacles
   float current_path_length = max_range + robot_radius;
   bool current_obstacle = false;
-  GetFreePath(minimum_points_in_point_cloud, V, current_obstacle, current_path_length)
- //would be double for loop
+  GetFreePath(minimum_points_in_point_cloud, v0, w0, &current_obstacle, &current_path_length)
+  values[i] = current_path_length;
+}
 
+  //find direction with best value. gets the max and store it in V_tilde
+  float best_value = 0;
+  float V_tilde = V;
+  for(size_t i = 0 ; i<values.size(); ++i){
+    if(values[i] > best_value)
+      const float angle = min_angle + increment * static_cast<float>(i);
+      const Vector2f dir(cos(angle), sin(angle));
+      V_tilde = dir * values[i];
+      best_value = value[i];
+  }
 
-  float best_velocity = 0;
+  GetCommandVel(V, V_tilde, &command_vel);
 
   // Cv is of type Point32 and its x component is the linear velocity towards forward direction
   // you do not need to fill its other components
