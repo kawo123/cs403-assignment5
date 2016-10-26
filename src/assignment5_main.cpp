@@ -45,6 +45,7 @@ const float max_velocity = 0.75;
 const float robot_radius = 0.18;
 const float robot_height = 0.36;
 
+
 // Helper function to convert ROS Point32 to Eigen Vectors.
 Vector3f ConvertPointToVector(const Point32& point) {
   return Vector3f(point.x, point.y, point.z);
@@ -69,6 +70,22 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
+// Helper function to check point P given desired vector V.
+// Returns free_path_length, -1.0 if P is not an obstical.
+float CheckPoint(const Vector2f P, const Vector2f V);
+
+// Helper function to transform and filter a point cloud for obsticals.
+// Returns filtered_point_cloud.
+vector<Vector3f> ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3f> point_cloud);
+
+// Helper function to convert an obstical point_cloud to a laserScan.
+// Returns a vector of ranges for a laserScan.
+vector<float> PointCloudToLaserScan(vector<Vector3f> point_cloud);
+
+// Helper function to calculate the commandVel vector.
+// Returns the commandVel vector.
+Vector2f GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V);
+
 bool CheckPointService(
     compsci403_assignment5::CheckPointSrv::Request& req,
     compsci403_assignment5::CheckPointSrv::Response& res) {
@@ -80,17 +97,10 @@ bool CheckPointService(
   float free_path_length = 0.0;
 
   // Write code to compute is_obstacle and free_path_length.
-
-  float rotation_radius = V.x() / V.y(); 
-  const Vector2f C(0, rotation_radius);
-  const float distance = FindVectorMaginitude(C - P);
-  if(distance < (robot_radius + rotation_radius)
-    || distance > (robot_radius - rotation_radius)){
-    is_obstacle = true; 
-    // calculate free path
+  free_path_length = CheckPoint(P, V);
+  if (free_path_length >= 0) {
+    is_obstacle = true;
   }
-
-  //////////////////////////////////////////////////////////
 
   res.free_path_length = free_path_length;
   res.is_obstacle = is_obstacle;
@@ -118,13 +128,9 @@ bool ObstaclePointCloudService(
   // Write code here to transform the input point cloud from the Kinect reference frame to the
   // robot's reference frame. Then filter out the points corresponding to ground
   // or heights larger than the height of the robot
-  for (size_t i = 0; i < point_cloud.size(); ++i) {
-    const Vector3f robot_frame_point = R * point_cloud[i] + T; 
-    if(!(robot_frame_point.z() >=  0
-        || robot_frame_point.z() <= robot_height)){ // 
-      filtered_point_cloud.push_back(robot_frame_point); 
-    } 
-  }
+
+  filtered_point_cloud = ObstaclePointCloud(R, T, point_cloud);
+  
 
   res.P_prime.resize(filtered_point_cloud.size());
   for (size_t i = 0; i < filtered_point_cloud.size(); ++i) {
@@ -146,33 +152,7 @@ bool PointCloudToLaserScanService(
   vector<float> ranges;
   // Process the point cloud here and convert it to a laser scan
 
-  const float min_angle = -28.0;
-  const float max_angle = 28.0;
-  const float increment = 1.0;
-  const float min_range = 0.8;
-  const float max_range = 4.0; 
-  const int size = (int) max_angle - min_angle + 1;
-  ranges.resize(size); 
-  // vector<float> closest_angle(size); 
-
-  for (size_t i = 0; i < ranges.size(); ++i) {
-    ranges[i] = 0; 
-    // closest_angle[i] = INT_MIN; 
-  }
-
-  for (size_t i = 0; i < point_cloud.size(); ++i) {
-    const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI;
-    const float rounded_angle = round(angle); 
-    if(rounded_angle >= min_angle && rounded_angle <= max_angle){
-      const int index = (int)(rounded_angle + 28.0);
-      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
-      if(distance < ranges[index]){
-        ranges[index] = distance; 
-      }
-    }
-
-  }
-  /////////////////////////////////////////////////////////////
+  ranges = PointCloudToLaserScan(point_cloud);
 
   res.ranges = ranges;
   return true;
@@ -212,13 +192,15 @@ bool GetCommandVelService(
 
   // Implement dynamic windowing approach to find the best velocity command for next time step
 
+  Vector2f command_vel = GetCommandVel(point_cloud, V);
+
   // Return the best velocity command
   // Cv is of type Point32 and its x component is the linear velocity towards forward direction
   // you do not need to fill its other components
-  res.Cv.x = 0;
+  res.Cv.x = command_vel.x();
   // Cw is of type Point32 and its z component is the rotational velocity around z axis
   // you do not need to fill its other components
-  res.Cw.z = 0;
+  res.Cw.z = command_vel.y();
 
   return true;
 }
@@ -266,6 +248,77 @@ int main(int argc, char **argv) {
   ros::spin();
 
   return 0;
+}
+
+float CheckPoint(const Vector2f P, const Vector2f V){
+  float free_path_length = -1.0;
+
+  float rotation_radius = V.x() / V.y(); 
+  const Vector2f C(0, rotation_radius);
+  const float distance = FindVectorMaginitude(C - P);// P - C maybe? call it P_prime and P_prime_mag maybe?
+  //float d = fabs(distance - rotation_radius)
+  // if (d < robot_radius)
+  if(distance < (robot_radius + rotation_radius)
+    || distance > (robot_radius - rotation_radius)){
+    is_obstacle = true; 
+    // calculate free path
+    
+  }
+
+  return free_path_length;
+}
+
+vector<Vector3f> ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3f> point_cloud){
+  vector<Vector3f> filtered_point_cloud;
+
+  /*for (size_t i = 0; i < point_cloud.size(); ++i) {
+    const Vector3f robot_frame_point = R * point_cloud[i] + T; 
+    if(!(robot_frame_point.z() >=  0
+        || robot_frame_point.z() <= robot_height)){ // 
+      filtered_point_cloud.push_back(robot_frame_point); 
+    } 
+  }*/
+
+  return filtered_point_cloud;
+}
+
+vector<float> PointCloudToLaserScan(vector<Vector3f> point_cloud){
+  vector<float> ranges;
+
+  /*const float min_angle = -28.0;
+  const float max_angle = 28.0;
+  const float increment = 1.0;
+  const float min_range = 0.8;
+  const float max_range = 4.0; 
+  const int size = (int) max_angle - min_angle + 1;
+  ranges.resize(size); 
+  // vector<float> closest_angle(size); 
+
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    ranges[i] = 0; 
+    // closest_angle[i] = INT_MIN; 
+  }
+
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI;
+    const float rounded_angle = round(angle); 
+    if(rounded_angle >= min_angle && rounded_angle <= max_angle){
+      const int index = (int)(rounded_angle + 28.0);
+      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
+      if(distance < ranges[index]){
+        ranges[index] = distance; 
+      }
+    }
+
+  }*/
+
+  return ranges;
+}
+
+Vector2f GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V){
+  Vector2f command_vel;
+
+  return command_vel;
 }
 
 
