@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <iostream>
+#include <cmath>
 #include <ros/ros.h>
 #include <std_msgs/String.h>
 #include <sstream>
@@ -18,7 +19,7 @@
 #include "compsci403_assignment5/GetTransformationSrv.h"
 #include "compsci403_assignment5/PointCloudToLaserScanSrv.h"
 
-#define PI 3.14159265
+#define PI 3.14159265 //M_PI
 
 using Eigen::Matrix3f;
 using Eigen::Vector3f;
@@ -29,14 +30,7 @@ using nav_msgs::Odometry;
 using std::cout;
 using std::vector;
 
-
-// Publisher for velocity command.
-ros::Publisher velocity_command_publisher_;
-
-// Last received odometry message.
-Odometry last_odometry;
-
-// Robotic parameters
+// Robot parameters
 const float max_linear_velocity  = 0.5; 
 const float max_rotat_velocity = 1.5;
 const float max_linear_acceleration  = 0.5; 
@@ -45,6 +39,12 @@ const float max_velocity = 0.75;
 const float robot_radius = 0.18;
 const float robot_height = 0.36;
 
+
+// Publisher for velocity command.
+ros::Publisher velocity_command_publisher_;
+
+// Last received odometry message.
+Odometry last_odometry;
 
 // Helper function to convert ROS Point32 to Eigen Vectors.
 Vector3f ConvertPointToVector(const Point32& point) {
@@ -70,21 +70,39 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
-// Helper function to check point P given desired vector V.
-// Returns free_path_length, -1.0 if P is not an obstical.
-float CheckPoint(const Vector2f P, const Vector2f V);
+bool CheckPoint(const Vector2f P, const Vector2f V, float *free_path_length){
+  /*float free_path_length = -1.0;
 
-// Helper function to transform and filter a point cloud for obsticals.
-// Returns filtered_point_cloud.
-vector<Vector3f> ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3f> point_cloud);
+  if (V.y() == 0) { //if going strait
+    float d = fabs(P.y());
+    if (d <= robot_radius) {
+      free_path_length = P.x() - sqrt(robot_radius*robot_radius - P.y()*P.y());
+    }
+    return free_path_length;
+  }
 
-// Helper function to convert an obstical point_cloud to a laserScan.
-// Returns a vector of ranges for a laserScan.
-vector<float> PointCloudToLaserScan(vector<Vector3f> point_cloud);
+  float rotation_radius = fabs(V.x() / V.y()); 
+  Vector2f C(0, rotation_radius);
 
-// Helper function to calculate the commandVel vector.
-// Returns the commandVel vector.
-Vector2f GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V);
+  Vector2f P_prime = P - C;
+  float P_prime_mag = FindVectorMaginitude(P_prime);
+  float d = fabs(P_prime_mag - rotation_radius);
+  if (d <= robot_radius) {
+    float rotation_angle = fabs(atan(P.y()/P.x()));
+    //float rotation_angle = atan2();
+
+    float D = rotation_radius*rotation_angle;
+
+    float alpha = acos((robot_radius*robot_radius - rotation_radius*rotation_radius - P_prime_mag*P_prime_mag)
+      /(-2*rotation_radius*P_prime_mag));
+    float delta = rotation_radius*alpha;
+
+    free_path_length = D - delta;
+  }
+
+  return free_path_length;*/
+  return false;
+}
 
 bool CheckPointService(
     compsci403_assignment5::CheckPointSrv::Request& req,
@@ -97,14 +115,62 @@ bool CheckPointService(
   float free_path_length = 0.0;
 
   // Write code to compute is_obstacle and free_path_length.
-  free_path_length = CheckPoint(P, V);
-  if (free_path_length >= 0) {
-    is_obstacle = true;
-  }
+  is_obstacle = CheckPoint(P, V, &free_path_length);
 
   res.free_path_length = free_path_length;
   res.is_obstacle = is_obstacle;
   return true;
+}
+
+bool ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3f> point_cloud, vector<Vector3f> *filtered_point_cloud) {
+  /*vector<Vector3f> final_filtered_point_cloud;
+
+  //transform and filter point cloud
+  vector<Vector3f> first_filtered_point_cloud;
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    Vector3f robot_frame_point = R * point_cloud[i] + T; 
+    if(robot_frame_point.z() <= robot_height){
+      first_filtered_point_cloud.push_back(robot_frame_point); 
+    } 
+  }
+
+  //ransac out ground plain
+  float epsilon = 0.02;
+
+  float pSuccess = 0.98;//must be between 1 and 0
+  float pOutliers = 0.25;//must be between 1 and 0
+
+  size_t numIter = (size_t)(std::log(1 - pSuccess)/std::log(1 - std::pow(1 - pOutliers, 3)));
+  ROS_INFO("numIter: %lu", numIter);
+
+  srand(time(NULL));
+
+  for (size_t i = 0; i < numIter; ++i){
+    ROS_INFO("iterating: %lu", i);
+    Vector3f P1 = point_cloud[rand() % first_filtered_point_cloud.size()];
+    Vector3f P2 = point_cloud[rand() % first_filtered_point_cloud.size()];
+    Vector3f P3 = point_cloud[rand() % first_filtered_point_cloud.size()];
+
+    Vector3f n_prime = (P2 - P1).cross(P3 - P1);
+    n_prime = n_prime/n_prime.norm();
+    Vector3f P0_prime = P1;
+
+    vector<Vector3f> outliers;
+    for (size_t i = 0; i < first_filtered_point_cloud.size(); ++i) {
+      if (std::abs(n_prime.dot(point_cloud[i] - P0_prime)) > epsilon) {
+        outliers.push_back(first_filtered_point_cloud[i]);
+      }
+    }
+
+    ROS_INFO("percent inliers: %f", 1 - (((float)outliers.size())/((float)point_cloud.size())));
+    if (pOutliers >= (((float)outliers.size())/((float)point_cloud.size()))){
+      final_filtered_point_cloud = outliers;
+      ROS_INFO("success!");
+      break;
+    }
+  }
+
+  return final_filtered_point_cloud;*/
 }
 
 bool ObstaclePointCloudService(
@@ -129,7 +195,7 @@ bool ObstaclePointCloudService(
   // robot's reference frame. Then filter out the points corresponding to ground
   // or heights larger than the height of the robot
 
-  filtered_point_cloud = ObstaclePointCloud(R, T, point_cloud);
+  ObstaclePointCloud(R, T, point_cloud, &filtered_point_cloud);
   
 
   res.P_prime.resize(filtered_point_cloud.size());
@@ -137,6 +203,38 @@ bool ObstaclePointCloudService(
     res.P_prime[i] = ConvertVectorToPoint(filtered_point_cloud[i]);
   }
   return true;
+}
+
+bool PointCloudToLaserScan(vector<Vector3f> point_cloud, vector<float> *ranges){
+  /*vector<float> ranges;
+
+  const float min_angle = -28.0;
+  const float max_angle = 28.0;
+  const float increment = 1.0;
+  const float min_range = 0.8;
+  const float max_range = 4.0; 
+  const int size = (int) max_angle - min_angle + 1;
+  ranges.resize(size); 
+  // vector<float> closest_angle(size); 
+
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    ranges[i] = 0; 
+    // closest_angle[i] = INT_MIN; 
+  }
+
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI;
+    const float rounded_angle = round(angle); 
+    if(rounded_angle >= min_angle && rounded_angle <= max_angle){
+      const int index = (int)(rounded_angle + 28.0); 
+      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
+      if(distance < ranges[index]){
+        ranges[index] = distance; 
+      }
+    }
+  }
+
+  return ranges;*/
 }
 
 bool PointCloudToLaserScanService(
@@ -152,10 +250,36 @@ bool PointCloudToLaserScanService(
   vector<float> ranges;
   // Process the point cloud here and convert it to a laser scan
 
-  ranges = PointCloudToLaserScan(point_cloud);
+  PointCloudToLaserScan(point_cloud, &ranges);
 
   res.ranges = ranges;
   return true;
+}
+
+bool GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V, float *v, float *w){
+  /*Vector2f command_vel;
+
+  const float min_angle = -28.0;
+  const float max_angle = 28.0;
+  const float increment = 1.0;
+  const float min_range = 0.8;
+  const float max_range = 4.0; 
+
+  vector<float> ranges = PointCloudToLaserScan(point_cloud);
+
+  float value = 0.0;
+
+  float thetaI = min_angle;
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    float theta = thetaI * PI / 180;
+    Vector2f P(ranges[i]*cos(theta), ranges[i]*sin(theta));
+    Vector2f V;
+    float free_path_length = CheckPoint(P, V);
+
+    thetaI += increment;
+  }
+
+  return command_vel;*/
 }
 
 bool GetCommandVelService(
@@ -192,15 +316,17 @@ bool GetCommandVelService(
 
   // Implement dynamic windowing approach to find the best velocity command for next time step
 
-  Vector2f command_vel = GetCommandVel(point_cloud, V);
+  float v;
+  float w;
+  GetCommandVel(point_cloud, V, &v, &w);
 
   // Return the best velocity command
   // Cv is of type Point32 and its x component is the linear velocity towards forward direction
   // you do not need to fill its other components
-  res.Cv.x = command_vel.x();
+  res.Cv.x = v;
   // Cw is of type Point32 and its z component is the rotational velocity around z axis
   // you do not need to fill its other components
-  res.Cw.z = command_vel.y();
+  res.Cw.z = w;
 
   return true;
 }
@@ -248,145 +374,4 @@ int main(int argc, char **argv) {
   ros::spin();
 
   return 0;
-}
-
-float CheckPoint(const Vector2f P, const Vector2f V){
-  float free_path_length = -1.0;
-
-  if (V.y() == 0) { //if going strait
-    float d = fabs(P.y());
-    if (d <= robot_radius) {
-      free_path_length = P.x() - sqrt(robot_radius*robot_radius - P.y()*P.y());
-    }
-    return free_path_length;
-  }
-
-  float rotation_radius = fabs(V.x() / V.y()); 
-  Vector2f C(0, rotation_radius);
-
-  Vector2f P_prime = P - C;
-  float P_prime_mag = FindVectorMaginitude(P_prime);
-  float d = fabs(P_prime_mag - rotation_radius);
-  if (d <= robot_radius) {
-    float rotation_angle = fabs(atan(P.y()/P.x()));
-
-    float D = rotation_radius*rotation_angle;
-
-    float alpha = acos((robot_radius*robot_radius - rotation_radius*rotation_radius - P_prime_mag*P_prime_mag)
-      /(-2*rotation_radius*P_prime_mag));
-    float delta = rotation_radius*alpha;
-
-    free_path_length = D - delta;
-  }
-
-  return free_path_length;
-}
-
-vector<Vector3f> ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3f> point_cloud){
-  vector<Vector3f> final_filtered_point_cloud;
-
-  //transform and filter point cloud
-  vector<Vector3f> first_filtered_point_cloud;
-  for (size_t i = 0; i < point_cloud.size(); ++i) {
-    Vector3f robot_frame_point = R * point_cloud[i] + T; 
-    if(robot_frame_point.z() <= robot_height){
-      first_filtered_point_cloud.push_back(robot_frame_point); 
-    } 
-  }
-
-  //ransac out ground plain
-  float epsilon = 0.02;
-
-  float pSuccess = 0.98;//must be between 1 and 0
-  float pOutliers = 0.25;//must be between 1 and 0
-
-  size_t numIter = (size_t)(std::log(1 - pSuccess)/std::log(1 - std::pow(1 - pOutliers, 3)));
-  ROS_INFO("numIter: %lu", numIter);
-
-  srand(time(NULL));
-
-  for (size_t i = 0; i < numIter; ++i){
-    ROS_INFO("iterating: %lu", i);
-    Vector3f P1 = point_cloud[rand() % first_filtered_point_cloud.size()];
-    Vector3f P2 = point_cloud[rand() % first_filtered_point_cloud.size()];
-    Vector3f P3 = point_cloud[rand() % first_filtered_point_cloud.size()];
-
-    Vector3f n_prime = (P2 - P1).cross(P3 - P1);
-    n_prime = n_prime/n_prime.norm();
-    Vector3f P0_prime = P1;
-
-    vector<Vector3f> outliers;
-    for (size_t i = 0; i < first_filtered_point_cloud.size(); ++i) {
-      if (std::abs(n_prime.dot(point_cloud[i] - P0_prime)) > epsilon) {
-        outliers.push_back(first_filtered_point_cloud[i]);
-      }
-    }
-
-    ROS_INFO("percent inliers: %f", 1 - (((float)outliers.size())/((float)point_cloud.size())));
-    if (pOutliers >= (((float)outliers.size())/((float)point_cloud.size()))){
-      final_filtered_point_cloud = outliers;
-      ROS_INFO("success!");
-      break;
-    }
-  }
-
-  return final_filtered_point_cloud;
-}
-
-vector<float> PointCloudToLaserScan(vector<Vector3f> point_cloud){
-  vector<float> ranges;
-
-  const float min_angle = -28.0;
-  const float max_angle = 28.0;
-  const float increment = 1.0;
-  const float min_range = 0.8;
-  const float max_range = 4.0; 
-  const int size = (int) max_angle - min_angle + 1;
-  ranges.resize(size); 
-  // vector<float> closest_angle(size); 
-
-  for (size_t i = 0; i < ranges.size(); ++i) {
-    ranges[i] = 0; 
-    // closest_angle[i] = INT_MIN; 
-  }
-
-  for (size_t i = 0; i < point_cloud.size(); ++i) {
-    const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI;
-    const float rounded_angle = round(angle); 
-    if(rounded_angle >= min_angle && rounded_angle <= max_angle){
-      const int index = (int)(rounded_angle + 28.0); 
-      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
-      if(distance < ranges[index]){
-        ranges[index] = distance; 
-      }
-    }
-  }
-
-  return ranges;
-}
-
-Vector2f GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V){
-  Vector2f command_vel;
-
-  const float min_angle = -28.0;
-  const float max_angle = 28.0;
-  const float increment = 1.0;
-  const float min_range = 0.8;
-  const float max_range = 4.0; 
-
-  vector<float> ranges = PointCloudToLaserScan(point_cloud);
-
-  float value = 0.0;
-
-  float thetaI = min_angle;
-  for (size_t i = 0; i < ranges.size(); ++i) {
-    float theta = thetaI * PI / 180;
-    Vector2f P(ranges[i]*cos(theta), ranges[i]*sin(theta));
-    Vector2f V;
-    float free_path_length = CheckPoint(P, V);
-
-    thetaI += increment;
-  }
-
-  return command_vel;
 }
