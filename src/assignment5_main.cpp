@@ -253,7 +253,7 @@ int main(int argc, char **argv) {
 float CheckPoint(const Vector2f P, const Vector2f V){
   float free_path_length = -1.0;
 
-  if (V.y() == 0) { //if going strait. //might have to check 90 and -90 also
+  if (V.y() == 0) { //if going strait
     float d = fabs(P.y());
     if (d <= robot_radius) {
       free_path_length = P.x() - sqrt(robot_radius*robot_radius - P.y()*P.y());
@@ -262,20 +262,13 @@ float CheckPoint(const Vector2f P, const Vector2f V){
   }
 
   float rotation_radius = fabs(V.x() / V.y()); 
-  Vector2f C;
-
-  if (V.y() > 0) { //might not be needed depends if V.x(velocity) can be negative
-    C << 0, rotation_radius;
-  }
-  else {
-    C << 0, -rotation_radius;
-  }
+  Vector2f C(0, rotation_radius);
 
   Vector2f P_prime = P - C;
   float P_prime_mag = FindVectorMaginitude(P_prime);
   float d = fabs(P_prime_mag - rotation_radius);
   if (d <= robot_radius) {
-    float rotation_angle = fabs(atan(P.y()/P.x())); //might have to do more checks depends if V.x(velocity) can be negative
+    float rotation_angle = fabs(atan(P.y()/P.x()));
 
     float D = rotation_radius*rotation_angle;
 
@@ -343,7 +336,7 @@ vector<Vector3f> ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3
 vector<float> PointCloudToLaserScan(vector<Vector3f> point_cloud){
   vector<float> ranges;
 
-  /*const float min_angle = -28.0;
+  const float min_angle = -28.0;
   const float max_angle = 28.0;
   const float increment = 1.0;
   const float min_range = 0.8;
@@ -361,14 +354,13 @@ vector<float> PointCloudToLaserScan(vector<Vector3f> point_cloud){
     const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI;
     const float rounded_angle = round(angle); 
     if(rounded_angle >= min_angle && rounded_angle <= max_angle){
-      const int index = (int)(rounded_angle + 28.0);
+      const int index = (int)(rounded_angle + 28.0); 
       const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
       if(distance < ranges[index]){
         ranges[index] = distance; 
       }
     }
-
-  }*/
+  }
 
   return ranges;
 }
