@@ -21,6 +21,7 @@
 
 #define PI 3.14159265 //M_PI
 
+using std::max;
 using Eigen::Matrix3f;
 using Eigen::Vector3f;
 using Eigen::Vector2f;
@@ -31,6 +32,7 @@ using std::cout;
 using std::vector;
 
 // Robot parameters
+const float max_range = 4.0;
 const float max_linear_velocity  = 0.5; 
 const float max_rotat_velocity = 1.5;
 const float max_linear_acceleration  = 0.5; 
@@ -70,38 +72,23 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
-bool CheckPoint(const Vector2f P, const float v, const float w, float *free_path_length){
-  /*float free_path_length = -1.0;
-
-  if (V.y() == 0) { //if going strait
-    float d = fabs(P.y());
-    if (d <= robot_radius) {
-      free_path_length = P.x() - sqrt(robot_radius*robot_radius - P.y()*P.y());
+bool CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacle, float *free_path_length){
+  if (w != 0) {
+    const float R = v/w;
+    const Vector2f C(0, R);
+    *is_obstacle = fabs((P - C).norm() - R) < robot_radius;
+    if (*is_obstacle) {
+      const float theta = (w > 0) ? (atan2(P.x(), R - P.y())): atan2(P.x(), P.y() - R);
+      *free_path_length = max(0.0, theta*fabs(R) - robot_radius);
     }
-    return free_path_length;
+    else {
+      *free_path_length = max_range;
+    }
   }
-
-  float rotation_radius = fabs(V.x() / V.y()); 
-  Vector2f C(0, rotation_radius);
-
-  Vector2f P_prime = P - C;
-  float P_prime_mag = FindVectorMaginitude(P_prime);
-  float d = fabs(P_prime_mag - rotation_radius);
-  if (d <= robot_radius) {
-    float rotation_angle = fabs(atan(P.y()/P.x()));
-    //float rotation_angle = atan2();
-
-    float D = rotation_radius*rotation_angle;
-
-    float alpha = acos((robot_radius*robot_radius - rotation_radius*rotation_radius - P_prime_mag*P_prime_mag)
-      /(-2*rotation_radius*P_prime_mag));
-    float delta = rotation_radius*alpha;
-
-    free_path_length = D - delta;
+  else { //going strait
+    //
   }
-
-  return free_path_length;*/
-  return false;
+  return true;
 }
 
 bool CheckPointService(
@@ -115,7 +102,7 @@ bool CheckPointService(
   float free_path_length = 0.0;
 
   // Write code to compute is_obstacle and free_path_length.
-  is_obstacle = CheckPoint(P, V.x(), V.y(), &free_path_length);
+  CheckPoint(P, V.x(), V.y(), &is_obstacle, &free_path_length);
 
   res.free_path_length = free_path_length;
   res.is_obstacle = is_obstacle;
