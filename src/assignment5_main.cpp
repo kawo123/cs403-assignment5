@@ -32,7 +32,6 @@ using std::cout;
 using std::vector;
 
 // Robot parameters
-const float max_range = 4.0;
 const float max_linear_velocity  = 0.5; 
 const float max_rotat_velocity = 1.5;
 const float max_linear_acceleration  = 0.5; 
@@ -40,6 +39,12 @@ const float max_rotat_acceleration = 2;
 const float max_velocity = 0.75; 
 const float robot_radius = 0.18;
 const float robot_height = 0.36;
+
+const float min_angle = -28.0;
+const float max_angle = 28.0;
+const float increment = 1.0;
+const float min_range = 0.8;
+const float max_range = 4.0; 
 
 
 // Publisher for velocity command.
@@ -109,7 +114,7 @@ bool CheckPointService(
   return true;
 }
 
-bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3f> point_cloud, vector<Vector3f> *filtered_point_cloud) {
+bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3f> point_cloud, vector<Vector3f> filtered_point_cloud) {
   vector<Vector3f> temp_point_cloud;
   for (size_t i = 0; i < point_cloud.size(); ++i) {
     Vector3f P = R * point_cloud[i] + T; 
@@ -145,7 +150,7 @@ bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3
 
     ROS_INFO("percent inliers: %f", 1 - (((float)outliers.size())/((float)point_cloud.size())));
     if (pOutliers >= (((float)outliers.size())/((float)point_cloud.size()))){
-      *filtered_point_cloud = outliers;
+      filtered_point_cloud = outliers;
       ROS_INFO("successfuly found ground plain");
       break;
     }
@@ -176,7 +181,7 @@ bool ObstaclePointCloudService(
   // robot's reference frame. Then filter out the points corresponding to ground
   // or heights larger than the height of the robot
 
-  ObstaclePointCloud(R, T, point_cloud, &filtered_point_cloud);
+  ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
   
 
   res.P_prime.resize(filtered_point_cloud.size());
@@ -186,21 +191,12 @@ bool ObstaclePointCloudService(
   return true;
 }
 
-bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> *ranges){
-  /*vector<float> ranges;
-
-  const float min_angle = -28.0;
-  const float max_angle = 28.0;
-  const float increment = 1.0;
-  const float min_range = 0.8;
-  const float max_range = 4.0; 
+bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> ranges){
   const int size = (int) max_angle - min_angle + 1;
   ranges.resize(size); 
-  // vector<float> closest_angle(size); 
 
-  for (size_t i = 0; i < ranges.size(); ++i) {
+  for (size_t i = 0; i < size; ++i) {
     ranges[i] = 0; 
-    // closest_angle[i] = INT_MIN; 
   }
 
   for (size_t i = 0; i < point_cloud.size(); ++i) {
@@ -208,14 +204,13 @@ bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> *ra
     const float rounded_angle = round(angle); 
     if(rounded_angle >= min_angle && rounded_angle <= max_angle){
       const int index = (int)(rounded_angle + 28.0); 
-      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
+      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y());//point_cloud[i].norm()
       if(distance < ranges[index]){
         ranges[index] = distance; 
       }
     }
   }
 
-  return ranges;*/
   return true;
 }
 
@@ -232,7 +227,7 @@ bool PointCloudToLaserScanService(
   vector<float> ranges;
   // Process the point cloud here and convert it to a laser scan
 
-  PointCloudToLaserScan(point_cloud, &ranges);
+  PointCloudToLaserScan(point_cloud, ranges);
 
   res.ranges = ranges;
   return true;
