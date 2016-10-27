@@ -253,16 +253,37 @@ int main(int argc, char **argv) {
 float CheckPoint(const Vector2f P, const Vector2f V){
   float free_path_length = -1.0;
 
-  float rotation_radius = V.x() / V.y(); 
-  const Vector2f C(0, rotation_radius);
-  const float distance = FindVectorMaginitude(C - P);// P - C maybe? call it P_prime and P_prime_mag maybe?
-  //float d = fabs(distance - rotation_radius)
-  // if (d < robot_radius)
-  if(distance < (robot_radius + rotation_radius)
-    || distance > (robot_radius - rotation_radius)){
-    is_obstacle = true; 
-    // calculate free path
-    
+  if (V.y() == 0) { //if going strait. //might have to check 90 and -90 also
+    float d = fabs(P.y());
+    if (d <= robot_radius) {
+      free_path_length = P.x() - sqrt(robot_radius*robot_radius - P.y()*P.y());
+    }
+    return free_path_length;
+  }
+
+  float rotation_radius = fabs(V.x() / V.y()); 
+  Vector2f C;
+
+  if (V.y() > 0) { //might not be needed depends if V.x(velocity) can be negative
+    C << 0, rotation_radius;
+  }
+  else {
+    C << 0, -rotation_radius;
+  }
+
+  Vector2f P_prime = P - C;
+  float P_prime_mag = FindVectorMaginitude(P_prime);
+  float d = fabs(P_prime_mag - rotation_radius);
+  if (d <= robot_radius) {
+    float rotation_angle = fabs(atan(P.y()/P.x())); //might have to do more checks depends if V.x(velocity) can be negative
+
+    float D = rotation_radius*rotation_angle;
+
+    float alpha = acos((robot_radius*robot_radius - rotation_radius*rotation_radius - P_prime_mag*P_prime_mag)
+      /(-2*rotation_radius*P_prime_mag));
+    float delta = rotation_radius*alpha;
+
+    free_path_length = D - delta;
   }
 
   return free_path_length;
@@ -320,13 +341,3 @@ Vector2f GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V){
 
   return command_vel;
 }
-
-
-
-
-
-
-
-
-
-
