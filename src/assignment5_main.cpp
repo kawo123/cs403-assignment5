@@ -110,54 +110,47 @@ bool CheckPointService(
 }
 
 bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3f> point_cloud, vector<Vector3f> *filtered_point_cloud) {
-  /*vector<Vector3f> final_filtered_point_cloud;
-
-  //transform and filter point cloud
-  vector<Vector3f> first_filtered_point_cloud;
+  vector<Vector3f> temp_point_cloud;
   for (size_t i = 0; i < point_cloud.size(); ++i) {
-    Vector3f robot_frame_point = R * point_cloud[i] + T; 
-    if(robot_frame_point.z() <= robot_height){
-      first_filtered_point_cloud.push_back(robot_frame_point); 
+    Vector3f P = R * point_cloud[i] + T; 
+    if(P.z() <= robot_height){
+      temp_point_cloud.push_back(P); 
     } 
   }
 
-  //ransac out ground plain
-  float epsilon = 0.02;
-
-  float pSuccess = 0.98;//must be between 1 and 0
-  float pOutliers = 0.25;//must be between 1 and 0
-
-  size_t numIter = (size_t)(std::log(1 - pSuccess)/std::log(1 - std::pow(1 - pOutliers, 3)));
+  const float epsilon = 0.02;
+  const float pSuccess = 0.95;
+  const float pOutliers = 0.30;
+  const size_t numIter = (size_t)round(log(1 - pSuccess)/log(1 - pow(1 - pOutliers, 3)));
   ROS_INFO("numIter: %lu", numIter);
 
   srand(time(NULL));
 
   for (size_t i = 0; i < numIter; ++i){
     ROS_INFO("iterating: %lu", i);
-    Vector3f P1 = point_cloud[rand() % first_filtered_point_cloud.size()];
-    Vector3f P2 = point_cloud[rand() % first_filtered_point_cloud.size()];
-    Vector3f P3 = point_cloud[rand() % first_filtered_point_cloud.size()];
+    Vector3f P1 = point_cloud[rand() % temp_point_cloud.size()];
+    Vector3f P2 = point_cloud[rand() % temp_point_cloud.size()];
+    Vector3f P3 = point_cloud[rand() % temp_point_cloud.size()];
 
-    Vector3f n_prime = (P2 - P1).cross(P3 - P1);
-    n_prime = n_prime/n_prime.norm();
-    Vector3f P0_prime = P1;
+    Vector3f n = (P2 - P1).cross(P3 - P1);
+    n = n/n.norm();
+    Vector3f P0 = P1;
 
     vector<Vector3f> outliers;
-    for (size_t i = 0; i < first_filtered_point_cloud.size(); ++i) {
-      if (std::abs(n_prime.dot(point_cloud[i] - P0_prime)) > epsilon) {
-        outliers.push_back(first_filtered_point_cloud[i]);
+    for (size_t i = 0; i < temp_point_cloud.size(); ++i) {
+      if (fabs(n.dot(point_cloud[i] - P0)) > epsilon) {
+        outliers.push_back(temp_point_cloud[i]);
       }
     }
 
     ROS_INFO("percent inliers: %f", 1 - (((float)outliers.size())/((float)point_cloud.size())));
     if (pOutliers >= (((float)outliers.size())/((float)point_cloud.size()))){
-      final_filtered_point_cloud = outliers;
-      ROS_INFO("success!");
+      *filtered_point_cloud = outliers;
+      ROS_INFO("successfuly found ground plain");
       break;
     }
   }
-
-  return final_filtered_point_cloud;*/
+  ROS_INFO("failed to find ground plain");
   return true;
 }
 
