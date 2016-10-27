@@ -70,7 +70,7 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
-bool CheckPoint(const Vector2f P, const Vector2f V, float *free_path_length){
+bool CheckPoint(const Vector2f P, const float v, const float w, float *free_path_length){
   /*float free_path_length = -1.0;
 
   if (V.y() == 0) { //if going strait
@@ -115,14 +115,14 @@ bool CheckPointService(
   float free_path_length = 0.0;
 
   // Write code to compute is_obstacle and free_path_length.
-  is_obstacle = CheckPoint(P, V, &free_path_length);
+  is_obstacle = CheckPoint(P, V.x(), V.y(), &free_path_length);
 
   res.free_path_length = free_path_length;
   res.is_obstacle = is_obstacle;
   return true;
 }
 
-bool ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3f> point_cloud, vector<Vector3f> *filtered_point_cloud) {
+bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3f> point_cloud, vector<Vector3f> *filtered_point_cloud) {
   /*vector<Vector3f> final_filtered_point_cloud;
 
   //transform and filter point cloud
@@ -171,6 +171,7 @@ bool ObstaclePointCloud(Matrix3f R, const Vector3f T, vector<Vector3f> point_clo
   }
 
   return final_filtered_point_cloud;*/
+  return true;
 }
 
 bool ObstaclePointCloudService(
@@ -205,7 +206,7 @@ bool ObstaclePointCloudService(
   return true;
 }
 
-bool PointCloudToLaserScan(vector<Vector3f> point_cloud, vector<float> *ranges){
+bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> *ranges){
   /*vector<float> ranges;
 
   const float min_angle = -28.0;
@@ -235,6 +236,7 @@ bool PointCloudToLaserScan(vector<Vector3f> point_cloud, vector<float> *ranges){
   }
 
   return ranges;*/
+  return true;
 }
 
 bool PointCloudToLaserScanService(
@@ -256,7 +258,7 @@ bool PointCloudToLaserScanService(
   return true;
 }
 
-bool GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V, float *v, float *w){
+bool GetCommandVel(const vector<Vector3f> point_cloud, const Vector2f V, float *v, float *w){
   /*Vector2f command_vel;
 
   const float min_angle = -28.0;
@@ -280,6 +282,7 @@ bool GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V, float *v, flo
   }
 
   return command_vel;*/
+  return true;
 }
 
 bool GetCommandVelService(
