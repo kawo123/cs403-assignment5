@@ -368,5 +368,25 @@ vector<float> PointCloudToLaserScan(vector<Vector3f> point_cloud){
 Vector2f GetCommandVel(vector<Vector3f> point_cloud, const Vector2f V){
   Vector2f command_vel;
 
+  const float min_angle = -28.0;
+  const float max_angle = 28.0;
+  const float increment = 1.0;
+  const float min_range = 0.8;
+  const float max_range = 4.0; 
+
+  vector<float> ranges = PointCloudToLaserScan(point_cloud);
+
+  float value = 0.0;
+
+  float thetaI = min_angle;
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    float theta = thetaI * PI / 180;
+    Vector2f P(ranges[i]*cos(theta), ranges[i]*sin(theta));
+    Vector2f V;
+    float free_path_length = CheckPoint(P, V);
+
+    thetaI += increment;
+  }
+
   return command_vel;
 }
