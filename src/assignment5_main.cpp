@@ -77,23 +77,21 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
-bool CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacle, float *free_path_length){
-  if (w != 0) {
-    const float R = v/w;
-    const Vector2f C(0, R);
+
+void GetCommandVel(const Vector2f& V0, const Vector2f& V_tilde, Vector2f* C){
+}
+  //didn't do this yet.
+void CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacle, float *free_path_length){
+    const Vector2f R = (fabs(w)>0) ? (v/w): in;
+    const Vector2f C(0,R);
     *is_obstacle = fabs((P - C).norm() - R) < robot_radius;
     if (*is_obstacle) {
       const float theta = (w > 0) ? (atan2(P.x(), R - P.y())): atan2(P.x(), P.y() - R);
-      *free_path_length = max(0.0, theta*fabs(R) - robot_radius);
+      *free_path_length = max(0.0f, theta*fabs(R) - robot_radius);
     }
     else {
       *free_path_length = max_range;
     }
-  }
-  else { //going strait
-    //
-  }
-  return true;
 }
 
 bool CheckPointService(
@@ -233,77 +231,108 @@ bool PointCloudToLaserScanService(
   return true;
 }
 
-bool GetCommandVel(const vector<Vector3f> point_cloud, const Vector2f V, float *v, float *w){
-  /*Vector2f command_vel;
-
-  const float min_angle = -28.0;
-  const float max_angle = 28.0;
-  const float increment = 1.0;
-  const float min_range = 0.8;
-  const float max_range = 4.0; 
-
-  vector<float> ranges = PointCloudToLaserScan(point_cloud);
-
-  float value = 0.0;
-
-  float thetaI = min_angle;
-  for (size_t i = 0; i < ranges.size(); ++i) {
-    float theta = thetaI * PI / 180;
-    Vector2f P(ranges[i]*cos(theta), ranges[i]*sin(theta));
-    Vector2f V;
-    float free_path_length = CheckPoint(P, V);
-
-    thetaI += increment;
-  }
-
-  return command_vel;*/
-  return true;
-}
 
 bool GetCommandVelService(
     compsci403_assignment5::GetCommandVelSrv::Request& req,
     compsci403_assignment5::GetCommandVelSrv::Response& res) {
 
   vector<Vector3f> point_cloud;
-  // The input v0 and w0 are each vectors. The x component of v0 is the linear 
-  // velocity towards forward direction and the z component of w0 is the
-  // rotational velocity around the z axis, i.e. around the center of rotation
-  // of the robot and in counter-clockwise direction
   const Vector2f V(req.v0.x, req.w0.z);
 
+  int count = 10;
   for (unsigned int y = 0; y < req.Image.height; ++y) {
     for (unsigned int x = 0; x < req.Image.width; ++x) {
       // Add code here to only process only every nth pixel
+      if(count <= 0){
+        uint16_t byte0 = req.Image.data[2 * (x + y * req.Image.width) + 0];
+        uint16_t byte1 = req.Image.data[2 * (x + y * req.Image.width) + 1];
+        if (!req.Image.is_bigendian) {
+          std::swap(byte0, byte1);
+        }
+        // Combine the two bytes to form a 16 bit value, and disregard the
+        // most significant 4 bits to extract the lowest 12 bits.
+        const uint16_t raw_depth = ((byte0 << 8) | byte1) & 0x7FF;
+        // Reconstruct 3D point from x, y, raw_depth using the camera intrinsics and add it to your point cloud.
+        Vector3f point;
 
-      uint16_t byte0 = req.Image.data[2 * (x + y * req.Image.width) + 0];
-      uint16_t byte1 = req.Image.data[2 * (x + y * req.Image.width) + 1];
-      if (!req.Image.is_bigendian) {
-        std::swap(byte0, byte1);
-      }
-      // Combine the two bytes to form a 16 bit value, and disregard the
-      // most significant 4 bits to extract the lowest 12 bits.
-      const uint16_t raw_depth = ((byte0 << 8) | byte1) & 0x7FF;
-      // Reconstruct 3D point from x, y, raw_depth using the camera intrinsics and add it to your point cloud.
-      Vector3f point;
-
-      point_cloud.push_back(point);
+        point_cloud.push_back(point);
+    } else {
+      count--;
     }
+   } 
   }
 
   // Use your code from part 3 to convert the point cloud to a laser scan
+    vector<float> ranges; //laser scan
+
+  const float min_angle = -28.0;
+  const float max_angle = 28.0;f
+  const float increment = 1.0;
+  const float min_range = 0.8;
+  const float max_range = 4.0; 
+  const int size = (int) max_angle - min_angle + 1;
+  ranges.resize(size); 
+
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    ranges[i] = 0; //initializes
+  }
+
+  PointCloudToLaserScan(point_cloud, ranges);
+  vector<Vector2f> minimum_points_in_point_cloud;
+  //for each increment in ranges in laser scan
+  //look at the minimum point in the range its current looking at
+
+  
+  for(size_t i = 0; i<ranges.size(); ++i){
+    Vector2f minimum_point;
+    for(size_t j = 0 ; j <point_cloud.size(); ++j){
+
+      const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI; //should be in radians. depemding if increment is in radians
+
+      const float directionalangle = min_angle+increment*(i);
+      if(angle<=directionalangle+increment/2 && angle>directionalangle-increment/2){ //atan is within the increment
+        float minimum_point_distance = FindVectorMaginitude(minimum_point.x(), minimum_point.y()); 
+        const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
+          if(distance < minimum_point_distance){
+            minimum_point = point_cloud[i];
+        }
+    }
+    }
+  }
+
+
+  //compute free path and collect all the
+    //free path lengths to the obstacles
+  vector<float> values(minimum_points_in_point_cloud.size(), 0.0);
+
+
+  for(size_t i = 0; i<minimum_points_in_point_cloud.size(); ++i){
+    float current_obstacle=false;
+    flaot current_path_length = max_range;
+    CheckPoint(minimum_points_in_point_cloud[i], v0, w0, &current_obstacle, &current_path_length);
+    values[i] = current_path_length;
+  }
 
   // Implement dynamic windowing approach to find the best velocity command for next time step
 
-  float v;
-  float w;
-  GetCommandVel(point_cloud, V, &v, &w);
+  //once you get all the possible free path lengths, you'll have to find the max of the free path lengths
+  //once you do, get the velocity of it
+  float max_free_path_length = 0;
+  for(size_t i =0; i<values.size(); ++i){
+    if(value[i] > max_free_path_length){
+      max_free_path_length = value[i];
+      //get the velocity of tht direction. should store the direction though....
+      const float angle = min_angle + increment * static_cast<float>(i);
+      const Vector2f dir(cos(angle), sin(angle));
+      V_tilde = dir * values[i];
+        //this doesnt have to do with amax or vmax at all? is tht only to help see if the V_tilde is admissible
+        //how to dynamic window? dynamic window is restrained for your amax and vmax
+    } 
+  }
 
-  // Return the best velocity command
-  // Cv is of type Point32 and its x component is the linear velocity towards forward direction
-  // you do not need to fill its other components
+
+
   res.Cv.x = v;
-  // Cw is of type Point32 and its z component is the rotational velocity around z axis
-  // you do not need to fill its other components
   res.Cw.z = w;
 
   return true;
@@ -321,6 +350,7 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
 
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
+
 
   command_vel.linear.x = 0; // replace with your calculated linear velocity c_v
   command_vel.angular.z = 0; // replace with your angular calculated velocity c_w
