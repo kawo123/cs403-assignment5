@@ -4,6 +4,7 @@
 #include <ros/ros.h>
 #include <std_msgs/String.h>
 #include <sstream>
+#include <limits>
 
 #include <eigen3/Eigen/Dense>
 #include <geometry_msgs/Point32.h>
@@ -39,14 +40,14 @@ const float max_rotat_acceleration = 2;
 const float max_velocity = 0.75; 
 const float robot_radius = 0.18;
 const float robot_height = 0.36;
+const float delta_time = 0.05; //20 Hz equal to 0.05 seconds
 
 const float min_angle = -28.0;
 const float max_angle = 28.0;
 const float increment = 1.0;
 const float min_range = 0.8;
 const float max_range = 4.0; 
-
-
+const float in = std::numeric_limits<float>::infinity();
 // Publisher for velocity command.
 ros::Publisher velocity_command_publisher_;
 
@@ -82,12 +83,12 @@ void GetCommandVel(const Vector2f& V0, const Vector2f& V_tilde, Vector2f* C){
 }
   //didn't do this yet.
 void CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacle, float *free_path_length){
-    const Vector2f R = (fabs(w)>0) ? (v/w): in;
+    const float R = (fabs(w)>0) ? (v/w): in;
     const Vector2f C(0,R);
     *is_obstacle = fabs((P - C).norm() - R) < robot_radius;
     if (*is_obstacle) {
       const float theta = (w > 0) ? (atan2(P.x(), R - P.y())): atan2(P.x(), P.y() - R);
-      *free_path_length = max(0.0f, theta*fabs(R) - robot_radius);
+      *free_path_length = max(0.0f, (float)(theta*fabs(R) - robot_radius));
     }
     else {
       *free_path_length = max_range;
@@ -238,6 +239,8 @@ bool GetCommandVelService(
 
   vector<Vector3f> point_cloud;
   const Vector2f V(req.v0.x, req.w0.z);
+  float v = req.v0.x;
+  float w = req.w0.z;
 
   int count = 10;
   for (unsigned int y = 0; y < req.Image.height; ++y) {
@@ -256,17 +259,27 @@ bool GetCommandVelService(
         Vector3f point;
 
         point_cloud.push_back(point);
+        count = 10;
     } else {
       count--;
     }
    } 
   }
 
+
+
+  const float Vmin = v - max_linear_acceleration*delta_time; 
+  const float Vmax = v + max_linear_acceleration*delta_time;
+  const float Wmin = w - max_rotat_acceleration*delta_time;
+  const float Wmax = w + max_rotat_acceleration*delta_time;
+  
+
+
   // Use your code from part 3 to convert the point cloud to a laser scan
     vector<float> ranges; //laser scan
 
   const float min_angle = -28.0;
-  const float max_angle = 28.0;f
+  const float max_angle = 28.0;
   const float increment = 1.0;
   const float min_range = 0.8;
   const float max_range = 4.0; 
@@ -294,7 +307,10 @@ bool GetCommandVelService(
         float minimum_point_distance = FindVectorMaginitude(minimum_point.x(), minimum_point.y()); 
         const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
           if(distance < minimum_point_distance){
-            minimum_point = point_cloud[i];
+            const Vector2f P(point_cloud[i].x(), point_cloud[i].y());
+            minimum_point = P;
+            minimum_points_in_point_cloud.push_back(minimum_point);
+
         }
     }
     }
@@ -307,20 +323,22 @@ bool GetCommandVelService(
 
 
   for(size_t i = 0; i<minimum_points_in_point_cloud.size(); ++i){
-    float current_obstacle=false;
-    flaot current_path_length = max_range;
-    CheckPoint(minimum_points_in_point_cloud[i], v0, w0, &current_obstacle, &current_path_length);
+    bool current_obstacle=false;
+    float current_path_length = max_range;
+    CheckPoint(minimum_points_in_point_cloud[i], v, w, &current_obstacle, &current_path_length);
     values[i] = current_path_length;
   }
+
 
   // Implement dynamic windowing approach to find the best velocity command for next time step
 
   //once you get all the possible free path lengths, you'll have to find the max of the free path lengths
   //once you do, get the velocity of it
   float max_free_path_length = 0;
+  Vector2f V_tilde = V;
   for(size_t i =0; i<values.size(); ++i){
-    if(value[i] > max_free_path_length){
-      max_free_path_length = value[i];
+    if(values[i] > max_free_path_length){
+      max_free_path_length = values[i];
       //get the velocity of tht direction. should store the direction though....
       const float angle = min_angle + increment * static_cast<float>(i);
       const Vector2f dir(cos(angle), sin(angle));
