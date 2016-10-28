@@ -351,6 +351,8 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
 
+  //same logic as part 4
+
 
   command_vel.linear.x = 0; // replace with your calculated linear velocity c_v
   command_vel.angular.z = 0; // replace with your angular calculated velocity c_w
@@ -361,6 +363,16 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
   ros::NodeHandle n;
+
+  // Write client node to get R and T from GetTransformationSrv
+  // ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  // 	("/COMPSCI403/GetTransformation");
+  // for (int row = 0; row < 3; ++row) {
+  //   for (int col = 0; col < 3; ++col) {
+  //     R(row, col) = req.R[col * 3 + row];
+  //   }
+  // }
+  // const Vector3f T(req.T.x, req.T.y, req.T.z);
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
