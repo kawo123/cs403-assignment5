@@ -41,6 +41,8 @@ const float max_velocity = 0.75;
 const float robot_radius = 0.18;
 const float robot_height = 0.36;
 const float delta_time = 0.05; //20 Hz equal to 0.05 seconds
+Matrix3f robot_R; 
+Vector3f robot_T; 
 
 const float min_angle = -28.0;
 const float max_angle = 28.0;
@@ -379,25 +381,26 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
   ros::NodeHandle n;
-  // Write client node to get R and T from GetTransformationSrv
-  // ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
-  //   ("/COMPSCI403/GetTransformation");
-  // for (int row = 0; row < 3; ++row) {
-  //   for (int col = 0; col < 3; ++col) {
-  //     R(row, col) = req.R[col * 3 + row];
-  //   }
-  // }
-  // const Vector3f T(req.T.x, req.T.y, req.T.z);
 
   // Write client node to get R and T from GetTransformationSrv
-  // ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
-  // 	("/COMPSCI403/GetTransformation");
-  // for (int row = 0; row < 3; ++row) {
-  //   for (int col = 0; col < 3; ++col) {
-  //     R(row, col) = req.R[col * 3 + row];
-  //   }
-  // }
-  // const Vector3f T(req.T.x, req.T.y, req.T.z);
+  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+    ("/COMPSCI403/GetTransformation");
+  compsci403_assignment5::GetTransformationSrv srv; 
+  if(client.call(srv)){
+  	for (int row = 0; row < 3; ++row) {
+	    for (int col = 0; col < 3; ++col) {
+	      robot_R(row, col) = srv.response.R[col * 3 + row];
+	    }
+  	}
+  	robot_T.x() = srv.response.T.x;
+  	robot_T.y() = srv.response.T.y;
+  	robot_T.z() = srv.response.T.z; 
+
+  }else{
+  	ROS_ERROR("Failed to call service GetTransformationSrv"); 
+  	return 1; 
+  }
+
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
