@@ -267,7 +267,7 @@ bool GetCommandVelService(
   }
 
 
-
+//changes
   const float Vmin = v - max_linear_acceleration*delta_time; 
   const float Vmax = v + max_linear_acceleration*delta_time;
   const float Wmin = w - max_rotat_acceleration*delta_time;
