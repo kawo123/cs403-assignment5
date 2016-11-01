@@ -64,6 +64,9 @@ const float b = -0.002745;
 const float in = std::numeric_limits<float>::infinity();
 const Matrix3f R = Matrix3f::Identity();
 const Vector3f T(0.13, 0, 0.305);
+
+ros::Publisher part2pub;
+
 // Publisher for velocity command.
 ros::Publisher velocity_command_publisher_;
 
@@ -148,7 +151,7 @@ bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3
 
   const float epsilon = 0.02;
   const float pSuccess = 0.95;
-  const float pOutliers = 0.30;
+  const float pOutliers = 0.35;
   const size_t numIter = (size_t)round(log(1 - pSuccess)/log(1 - pow(1 - pOutliers, 3)));
   ROS_INFO("numIter: %lu", numIter);
 
@@ -156,29 +159,27 @@ bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3
 
   for (size_t i = 0; i < numIter; ++i){
     ROS_INFO("iterating: %lu", i);
-    Vector3f P1 = point_cloud[rand() % temp_point_cloud.size()];
-    Vector3f P2 = point_cloud[rand() % temp_point_cloud.size()];
-    Vector3f P3 = point_cloud[rand() % temp_point_cloud.size()];
+    Vector3f P1 = temp_point_cloud[rand() % temp_point_cloud.size()];
+    Vector3f P2 = temp_point_cloud[rand() % temp_point_cloud.size()];
+    Vector3f P3 = temp_point_cloud[rand() % temp_point_cloud.size()];
 
     Vector3f n = (P2 - P1).cross(P3 - P1);
     n = n/n.norm();
     Vector3f P0 = P1;
 
-    vector<Vector3f> outliers;
+    filtered_point_cloud.clear();
     for (size_t i = 0; i < temp_point_cloud.size(); ++i) {
-      if (fabs(n.dot(point_cloud[i] - P0)) > epsilon) {
-        outliers.push_back(temp_point_cloud[i]);
+      if (fabs(n.dot(temp_point_cloud[i] - P0)) > epsilon) {
+        filtered_point_cloud.push_back(temp_point_cloud[i]);
       }
     }
 
-    ROS_INFO("percent inliers: %f", 1 - (((float)outliers.size())/((float)point_cloud.size())));
-    if (pOutliers >= (((float)outliers.size())/((float)point_cloud.size()))){
-      filtered_point_cloud = outliers;
+    ROS_INFO("percent inliers: %f", 1 - (((float)filtered_point_cloud.size())/((float)point_cloud.size())));
+    if (pOutliers >= (((float)filtered_point_cloud.size())/((float)point_cloud.size()))){
       ROS_INFO("successfuly found ground plain");
       break;
     }
   }
-  ROS_INFO("failed to find ground plain");
   return true;
 }
 
@@ -475,8 +476,8 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
   float linear_velocity = 0;
-	float rot_velocity = 0;
-	GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
+  float rot_velocity = 0;
+  GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
 
   //////////////////////////////////////////////////////////////////
   vector<Vector3f> point_cloud;
@@ -631,6 +632,28 @@ void TestCheckPoint2(){
 
 }
 
+void part2tester(const sensor_msgs::PointCloud& point_cloud_msg){
+  sensor_msgs::PointCloud filtered_point_cloud_msg;
+  filtered_point_cloud_msg.header = point_cloud_msg.header;
+  // Create a Vector3f point cloud, of the same size as the input point cloud.
+  vector<Vector3f> point_cloud(point_cloud_msg.points.size());
+
+  // Copy over the input point cloud.
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    point_cloud[i] = ConvertPointToVector(point_cloud_msg.points[i]);
+  }
+
+  vector<Vector3f> filtered_point_cloud;
+  ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
+
+  filtered_point_cloud_msg.points.resize(filtered_point_cloud.size());
+  for (size_t i = 0; i < filtered_point_cloud.size(); ++i) {
+    filtered_point_cloud_msg.points[i] = ConvertVectorToPoint(filtered_point_cloud[i]);
+  }
+  ROS_INFO("part2tester called");
+  part2pub.publish(filtered_point_cloud_msg);
+}
+
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
@@ -643,23 +666,23 @@ int main(int argc, char **argv) {
   }
 
   // Write client node to get R and T from GetTransformationSrv
-  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  /*ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
     ("/COMPSCI403/GetTransformation");
   compsci403_assignment5::GetTransformationSrv srv; 
   if(client.call(srv)){
-  	for (int row = 0; row < 3; ++row) {
-	    for (int col = 0; col < 3; ++col) {
-	      robot_R(row, col) = srv.response.R[col * 3 + row];
-	    }
-  	}
-  	robot_T.x() = srv.response.T.x;
-  	robot_T.y() = srv.response.T.y;
-  	robot_T.z() = srv.response.T.z; 
+    for (int row = 0; row < 3; ++row) {
+      for (int col = 0; col < 3; ++col) {
+        robot_R(row, col) = srv.response.R[col * 3 + row];
+      }
+    }
+    robot_T.x() = srv.response.T.x;
+    robot_T.y() = srv.response.T.y;
+    robot_T.z() = srv.response.T.z; 
 
   }else{
-  	ROS_ERROR("Failed to call service GetTransformationSrv"); 
-  	return 1; 
-  }
+    ROS_ERROR("Failed to call service GetTransformationSrv"); 
+    return 1; 
+  }*/
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
@@ -673,10 +696,16 @@ int main(int argc, char **argv) {
   velocity_command_publisher_ =
       n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
 
+  part2pub = 
+      n.advertise<sensor_msgs::PointCloud>("testing_part_2", 1);
+
   ros::Subscriber depth_image_subscriber =
       n.subscribe("/Cobot/Kinect/Depth", 1, DepthImageCallback);
   ros::Subscriber odometry_subscriber =
       n.subscribe("/odom", 1, OdometryCallback);
+
+  ros::Subscriber part2sub =
+      n.subscribe("/Cobot/Kinect/FilteredPointCloud", 1, part2tester);
 
   ros::spin();
 
