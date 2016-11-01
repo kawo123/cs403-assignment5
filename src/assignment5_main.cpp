@@ -475,10 +475,29 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   velocity_command_publisher_.publish(command_vel);
 }
 
+void TestCheckPoint(){
+  const float v= 1;
+  const float w= 2;
+  const float theta_expected = PI/4.0;
+  const float free_path_expected = PI/8.0;
+  const Vector2f p(0.25, 0.25);
+  float free_path_length = 0;
+  bool is_obstacle = false;
+  CheckPoint(p,v,w,&is_obstacle,&free_path_length);
+  //reproduce code here. if u get radius to point p obstacle, you can see if it's obstacle
+  //can see if it's an obstacle
+    printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
+        printf("EXPECTED free_path_length: %f \n EXPECTED theta expected: %f", free_path_expected, theta_expected);
+
+}
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
   ros::NodeHandle n;
+  if(true){
+    TestCheckPoint();
+    return true;
+  }
   // Write client node to get R and T from GetTransformationSrv
   // ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
   //   ("/COMPSCI403/GetTransformation");
