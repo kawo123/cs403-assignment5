@@ -388,7 +388,8 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
           
       } 
         if(free_path_length >= min_range && currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
-          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
+          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + 
+          					beta * free_path_length + tao * currentlinearvelocity);
           if(current_G > G){
             G = current_G;
             v = currentlinearvelocity;
