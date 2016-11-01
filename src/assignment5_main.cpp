@@ -96,23 +96,24 @@ float FindVectorMaginitude(const float x, const float y){
   //didn't do this yet.
 void CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacle, float *free_path_length){
     if(w != 0){
-    const float R = (fabs(w)>0) ? (v/w): in;
-    const Vector2f C(0,R);
-    *is_obstacle = fabs((P - C).norm() - R) < robot_radius;
-    if (*is_obstacle) {
-      const float theta = (w > 0) ? (atan2(P.x(), R - P.y())): atan2(P.x(), P.y() - R);
-      *free_path_length = max(0.0f, (float)(theta*fabs(R) - robot_radius));
-    }
-    else {
-      *free_path_length = max_range;
-    }
-  }else{ //going straight
-    *is_obstacle = fabs(P.y()) < robot_radius;
-    if(*is_obstacle){
-      *free_path_length = max(0.0f, P.x()-robot_radius);
-    }else{
-      *free_path_length = max_range;
-    }
+      const float R = (fabs(w)>0) ? (v/w): in;
+      const Vector2f C(0,R);
+      *is_obstacle = fabs((P - C).norm() - R) < robot_radius;
+        if (*is_obstacle) {
+          const float theta = (w > 0) ? (atan2(P.x(), R - P.y())): atan2(P.x(), P.y() - R);
+          //printf("print in middle of method: \n computed theta: %f \nexpected theta: %f\n", theta, 3 * PI/4.0);
+          *free_path_length = max(0.0f, (float)(theta*fabs(R) - robot_radius)); //
+        }
+      else { //not an obstacle
+        *free_path_length = max_range;
+      }
+    }else{ //going straight
+      *is_obstacle = fabs(P.y()) < robot_radius;
+      if(*is_obstacle){
+        *free_path_length = max(0.0f, P.x()-robot_radius);
+      }else{
+        *free_path_length = max_range;
+      }
   }
 }
 
@@ -384,12 +385,16 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
             theta+=increment;
           
       } 
-        float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
-        if(current_G > G){
-          G = current_G;
-          v = currentlinearvelocity;
-          w = currentrotvelocity;
+        if(free_path_length >= min_range && currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
+          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
+          if(current_G > G){
+            G = current_G;
+            v = currentlinearvelocity;
+            w = currentrotvelocity;
+          }
         }
+
+
       }
     }
   }
@@ -487,15 +492,35 @@ void TestCheckPoint(){
   //reproduce code here. if u get radius to point p obstacle, you can see if it's obstacle
   //can see if it's an obstacle
     printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
-        printf("EXPECTED free_path_length: %f \n EXPECTED theta expected: %f", free_path_expected, theta_expected);
+        printf("\nEXPECTED free_path_length: %f \n EXPECTED theta expected: %f\n", free_path_expected, theta_expected);
 
 }
+
+
+
+void TestCheckPoint2(){
+  const float v= 1;
+  const float w= 2;
+  const float theta_expected = 3 * PI/4.0;
+  const float free_path_expected = 3 * PI/8.0;
+  const Vector2f p(0.25, 0.75);
+  float free_path_length = 0;
+  bool is_obstacle = false;
+  CheckPoint(p,v,w,&is_obstacle,&free_path_length);
+  //reproduce code here. if u get radius to point p obstacle, you can see if it's obstacle
+  //can see if it's an obstacle
+    printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
+        printf("\nEXPECTED free_path_length: %f \n EXPECTED theta expected: %f\n", free_path_expected, theta_expected);
+
+}
+
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
   ros::NodeHandle n;
-  if(true){
-    TestCheckPoint();
+  if(false){
+    //TestCheckPoint1();
+    TestCheckPoint2();
     return true;
   }
   // Write client node to get R and T from GetTransformationSrv
