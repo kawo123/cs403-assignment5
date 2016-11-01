@@ -210,6 +210,31 @@ bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> ran
     }
   }
 
+
+ /* vector<Vector3f> minimum_points_in_point_cloud;
+  //for each increment in ranges in laser scan
+  //look at the minimum point in the range its current looking at
+
+  
+  for(size_t i = 0; i<ranges.size(); ++i){
+    Vector3f minimum_point;
+    for(size_t j = 0 ; j <filtered_point_cloud.size(); ++j){
+
+      const float angle = atan(filtered_point_cloud[i].y() / filtered_point_cloud[i].x()) * 180 / PI; //should be in radians. depemding if increment is in radians
+
+      const float directionalangle = min_angle+increment* static_cast<float>(i);
+      if(angle<=directionalangle+increment/2 && angle>directionalangle-increment/2){ //atan is within the increment
+        float minimum_point_distance = FindVectorMaginitude(minimum_point.x(), minimum_point.y()); 
+        const float distance = FindVectorMaginitude(filtered_point_cloud[i].x(), filtered_point_cloud[i].y()); 
+          if(distance < minimum_point_distance){
+            const Vector3f P = filtered_point_cloud[i];//(filtered_point_cloud[i].x(), filtered_point_cloud[i].y());
+            minimum_point = P;
+            minimum_points_in_point_cloud.push_back(minimum_point);
+
+        }
+    }
+    }
+  }*/
   return true;
 }
 
@@ -234,11 +259,11 @@ bool PointCloudToLaserScanService(
 
 
 
-void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v0,const geometry_msgs::Point32 w0, geometry_msgs::Point32 *Cv, geometry_msgs::Point32 *Cw, vector<Vector3f> *point_cloud){
+void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v0,const geometry_msgs::Point32 w0, float *linear_velocity, float *rot_velocity){
   const Vector2f V(v0.x, w0.z);
   float v = v0.x;
   float w = w0.z;
-
+  vector<Vector3f> point_cloud;
   int count = 10;
   for (unsigned int y = 0; y < Image.height; ++y) {
     for (unsigned int x = 0; x < Image.width; ++x) {
@@ -255,7 +280,7 @@ void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v
         // Reconstruct 3D point from x, y, raw_depth using the camera intrinsics and add it to your point cloud.
         Vector3f point;
 
-        point_cloud->push_back(point);
+        point_cloud.push_back(point);
         count = 10;
     } else {
       count--;
@@ -264,7 +289,21 @@ void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v
   }
   vector<Vector3f> filtered_point_cloud;
 
-  ObstaclePointCloud(R, T, point_cloud, &filtered_point_cloud);
+  ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
+
+  // Use your code from part 3 to convert the point cloud to a laser scan
+    vector<float> ranges; //laser scan
+
+  const int size = (int) max_angle - min_angle + 1;
+  ranges.resize(size); 
+
+  for (size_t i = 0; i < ranges.size(); ++i) {
+    ranges[i] = 0; //initializes
+  }
+
+  PointCloudToLaserScan(filtered_point_cloud, ranges);
+
+
 
 
   //dynamic window of minimum and maximum velocities given acceleration constraints
@@ -284,57 +323,58 @@ void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v
   const float vincrement = Vdifference/50;
   const float wincrement = Wdifference/50;
 
-  const float Vsize = 51;
-  const float WSize = 51;
+  const int Vsize = 51;
+  const int WSize = 51;
 
-  const float max_linear_V = Vmin;
+  float min_free_path = 5; //in meters?
+
   float dynamicwindow[Vsize][WSize];
+  float G = 0;
+
+  const float alpha = 1;
+  const float beta = 1;
+  const float tao = 1;
+  const float sigma = 1;
+
   for(size_t currentv = 0; currentv<Vsize; currentv = currentv+vincrement){
     for(size_t currentw = 0; currentw<WSize; currentw = currentw+wincrement){
     //admissible velocities for dynamic window
       if(abs(currentv)<max_linear_velocity && abs(currentw)<max_rotat_velocity){
         //best velocity
-        
+        const float currentlinearvelocity = Vmin + vincrement* static_cast<float>(currentv);
+        const float currentrotvelocity = Wmin + wincrement* static_cast<float>(currentw);
+        float free_path_length = 0;
+        bool is_obstacle = false;
+
+        float theta = min_angle;
+        for(size_t i = 0; i<ranges.size(); ++i){
+          const float radtheta = theta * PI/180;
+          const Vector2f P(sin(radtheta)*ranges[i], cos(radtheta)*ranges[i]);
+          CheckPoint(P, currentlinearvelocity, currentrotvelocity, &is_obstacle, &free_path_length);
+          if(is_obstacle && free_path_length < min_free_path){
+            min_free_path = free_path_length;
+            /*v = currentlinearvelocity;
+            w = currentrotvelocity;*/
+
+          }
+            theta+=increment;
+          
+      } 
+        float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
+        if(current_G > G){
+          G = current_G;
+          v = currentlinearvelocity;
+          w = currentrotvelocity;
+        }
       }
     }
   }
 
-  // Use your code from part 3 to convert the point cloud to a laser scan
-    vector<float> ranges; //laser scan
+*linear_velocity = v;
+*rot_velocity = w;
 
-  const int size = (int) max_angle - min_angle + 1;
-  ranges.resize(size); 
 
-  for (size_t i = 0; i < ranges.size(); ++i) {
-    ranges[i] = 0; //initializes
-  }
-
-  PointCloudToLaserScan(filtered_point_cloud, ranges);
-  vector<Vector3f> minimum_points_in_point_cloud;
-  //for each increment in ranges in laser scan
-  //look at the minimum point in the range its current looking at
-
-  
-  for(size_t i = 0; i<ranges.size(); ++i){
-    Vector3f minimum_point;
-    for(size_t j = 0 ; j <filtered_point_cloud.size(); ++j){
-
-      const float angle = atan(filtered_point_cloud[i].y() / filtered_point_cloud[i].x()) * 180 / PI; //should be in radians. depemding if increment is in radians
-
-      const float directionalangle = min_angle+increment*(i);
-      if(angle<=directionalangle+increment/2 && angle>directionalangle-increment/2){ //atan is within the increment
-        float minimum_point_distance = FindVectorMaginitude(minimum_point.x(), minimum_point.y()); 
-        const float distance = FindVectorMaginitude(filtered_point_cloud[i].x(), filtered_point_cloud[i].y()); 
-          if(distance < minimum_point_distance){
-            const Vector3f P = filtered_point_cloud[i];//(filtered_point_cloud[i].x(), filtered_point_cloud[i].y());
-            minimum_point = P;
-            minimum_points_in_point_cloud.push_back(minimum_point);
-
-        }
-    }
-    }
-  }
-
+/*
 
   //compute free path and collect all the
     //free path lengths to the obstacles
@@ -346,30 +386,29 @@ void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v
     float current_path_length = max_range;
     CheckPoint(minimum_points_in_point_cloud[i], v, w, &current_obstacle, &current_path_length);
     values[i] = current_path_length;
-  }
+  }*/
 
 
   // Implement dynamic windowing approach to find the best velocity command for next time step
 
   //once you get all the possible free path lengths, you'll have to find the max of the free path lengths
   //once you do, get the velocity of it
-  float max_free_path_length = 0;
-  Vector2f V_tilde = V;
+ /* Vector2f V_tilde = V;
   for(size_t i =0; i<values.size(); ++i){
-    if(values[i] > max_free_path_length){
-      max_free_path_length = values[i];
+    if(values[i] >= max_free_path){
+      max_free_path = values[i];
       //get the velocity of tht direction. should store the direction though....
       const float angle = min_angle + increment * static_cast<float>(i);
       const Vector2f dir(cos(angle), sin(angle));
-      V_tilde = dir * values[i];
+      V_tilde = FindVectorMaginitude(dir) * values[i];
+      Cv = V_tilde; //Cv is supposed to be a geometry_msg
+      Cw = angle;
+      break;
         //this doesnt have to do with amax or vmax at all? is tht only to help see if the V_tilde is admissible
         //how to dynamic window? dynamic window is restrained for your amax and vmax
     } 
   }
-
-
-
-
+*/
 }
 
 
@@ -377,15 +416,16 @@ bool GetCommandVelService(
     compsci403_assignment5::GetCommandVelSrv::Request& req,
     compsci403_assignment5::GetCommandVelSrv::Response& res) {
 
-  vector<Vector3f> point_cloud;
-  geometry_msgs::Point32 Cv = req.v0;
-  geometry_msgs::Point32 Cw = req.w0;
+  float linear_velocity = 0;
+  float rot_velocity = 0;
+  //geometry_msgs::Point32 Cv = req.v0;
+  //geometry_msgs::Point32 Cw = req.w0;
 
-  GetCommandVel(req.Image,req.v0, req.w0, &Cv, &Cw, &point_cloud);
+  GetCommandVel(req.Image,req.v0, req.w0, &linear_velocity, &rot_velocity);
 
 
-  res.Cv.x = Cv.x;
-  res.Cw.z = Cw.z;
+  res.Cv.x = linear_velocity;
+  res.Cw.z = rot_velocity;
 
   return true;
 }
