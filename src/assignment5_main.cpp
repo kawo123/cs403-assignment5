@@ -284,7 +284,7 @@ bool PointCloudToLaserScanService(
 
 
 
-void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0, float *linear_velocity, float *rot_velocity){
+void GetCommandVel(const Matrix3f R, const Vector3f T, const sensor_msgs::Image Image,const float v0,const float w0, float *linear_velocity, float *rot_velocity){
  // const Vector2f V(v0.x, w0.z);
   float v = v0;
   float w = w0;
@@ -454,7 +454,7 @@ bool GetCommandVelService(
   //geometry_msgs::Point32 Cv = req.v0;
   //geometry_msgs::Point32 Cw = req.w0;
 
-  GetCommandVel(req.Image,req.v0.x, req.w0.z, &linear_velocity, &rot_velocity);
+  GetCommandVel(R, T, req.Image,req.v0.x, req.w0.z, &linear_velocity, &rot_velocity);
 
 
   res.Cv.x = linear_velocity;
@@ -477,122 +477,8 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   // find the best velocity command and publish the velocity command
   float linear_velocity = 0;
   float rot_velocity = 0;
-  GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
+  GetCommandVel(robot_R, robot_T, depth_image, v0, w0, &linear_velocity, &rot_velocity);
 
-  //////////////////////////////////////////////////////////////////
-  vector<Vector3f> point_cloud;
-  const Vector2f V(v0, w0);
-  float v = v0; 
-  float w = w0;
-
-  int count = 10;
-  for (unsigned int y = 0; y < depth_image.height; ++y) {
-    for (unsigned int x = 0; x < depth_image.width; ++x) {
-      // Add code here to only process only every nth pixel
-      if(count <= 0){
-        uint16_t byte0 = depth_image.data[2 * (x + y * depth_image.width) + 0];
-        uint16_t byte1 = depth_image.data[2 * (x + y * depth_image.width) + 1];
-        if (!depth_image.is_bigendian) {
-          std::swap(byte0, byte1);
-        }
-        // Combine the two bytes to form a 16 bit value, and disregard the
-        // most significant 4 bits to extract the lowest 12 bits.
-        const uint16_t raw_depth = ((byte0 << 8) | byte1) & 0x7FF;
-        // Reconstruct 3D point from x, y, raw_depth using the camera intrinsics and add it to your point cloud.
-        Vector3f point;
-
-        point_cloud.push_back(point);
-        count = 10;
-    } else {
-      count--;
-    }
-   } 
-  }
-
-
-
-  const float Vmin = v - max_linear_acceleration*delta_time; 
-  const float Vmax = v + max_linear_acceleration*delta_time;
-  const float Wmin = w - max_rotat_acceleration*delta_time;
-  const float Wmax = w + max_rotat_acceleration*delta_time;
-
-
-
-  // Use your code from part 3 to convert the point cloud to a laser scan
-    vector<float> ranges; //laser scan
-
-  const float min_angle = -28.0;
-  const float max_angle = 28.0;
-  const float increment = 1.0;
-  const float min_range = 0.8;
-  const float max_range = 4.0; 
-  const int size = (int) max_angle - min_angle + 1;
-  ranges.resize(size); 
-
-  for (size_t i = 0; i < ranges.size(); ++i) {
-    ranges[i] = 0; //initializes
-  }
-
-  PointCloudToLaserScan(point_cloud, ranges);
-  vector<Vector2f> minimum_points_in_point_cloud;
-  //for each increment in ranges in laser scan
-  //look at the minimum point in the range its current looking at
-
-  
-  for(size_t i = 0; i<ranges.size(); ++i){
-    Vector2f minimum_point;
-    for(size_t j = 0 ; j <point_cloud.size(); ++j){
-
-      const float angle = atan(point_cloud[i].y() / point_cloud[i].x()) * 180 / PI; //should be in radians. depemding if increment is in radians
-
-      const float directionalangle = min_angle+increment*(i);
-      if(angle<=directionalangle+increment/2 && angle>directionalangle-increment/2){ //atan is within the increment
-        float minimum_point_distance = FindVectorMaginitude(minimum_point.x(), minimum_point.y()); 
-        const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y()); 
-          if(distance < minimum_point_distance){
-            const Vector2f P(point_cloud[i].x(), point_cloud[i].y());
-            minimum_point = P;
-            minimum_points_in_point_cloud.push_back(minimum_point);
-
-        }
-    }
-    }
-  }
-
-
-  //compute free path and collect all the
-    //free path lengths to the obstacles
-  vector<float> values(minimum_points_in_point_cloud.size(), 0.0);
-
-
-  for(size_t i = 0; i<minimum_points_in_point_cloud.size(); ++i){
-    bool current_obstacle=false;
-    float current_path_length = max_range;
-    CheckPoint(minimum_points_in_point_cloud[i], v, w, &current_obstacle, &current_path_length);
-    values[i] = current_path_length;
-  }
-
-
-  // Implement dynamic windowing approach to find the best velocity command for next time step
-
-  //once you get all the possible free path lengths, you'll have to find the max of the free path lengths
-  //once you do, get the velocity of it
-  float max_free_path_length = 0;
-  Vector2f V_tilde = V;
-  for(size_t i =0; i<values.size(); ++i){
-    if(values[i] > max_free_path_length){
-      max_free_path_length = values[i];
-      //get the velocity of tht direction. should store the direction though....
-      const float angle = min_angle + increment * static_cast<float>(i);
-      const Vector2f dir(cos(angle), sin(angle));
-      V_tilde = dir * values[i];
-        //this doesnt have to do with amax or vmax at all? is tht only to help see if the V_tilde is admissible
-        //how to dynamic window? dynamic window is restrained for your amax and vmax
-    } 
-  }
-  //////////////////////////////////////////////////////////////////
-
-  //same logic as part 4
   command_vel.linear.x = linear_velocity; // replace with your calculated linear velocity c_v
   command_vel.angular.z = rot_velocity; // replace with your angular calculated velocity c_w
   velocity_command_publisher_.publish(command_vel);
@@ -666,7 +552,7 @@ int main(int argc, char **argv) {
   }
 
   // Write client node to get R and T from GetTransformationSrv
-  /*ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
     ("/COMPSCI403/GetTransformation");
   compsci403_assignment5::GetTransformationSrv srv; 
   if(client.call(srv)){
@@ -682,7 +568,7 @@ int main(int argc, char **argv) {
   }else{
     ROS_ERROR("Failed to call service GetTransformationSrv"); 
     return 1; 
-  }*/
+  }
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
