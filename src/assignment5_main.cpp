@@ -473,7 +473,9 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
 
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
-<<<<<<< HEAD
+  float linear_velocity = 0;
+	float rot_velocity = 0;
+	GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
 
   //////////////////////////////////////////////////////////////////
   vector<Vector3f> point_cloud;
@@ -588,12 +590,6 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   }
   //////////////////////////////////////////////////////////////////
 
-
-=======
-    float linear_velocity = 0;
-    float rot_velocity = 0;
-    GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
->>>>>>> ddd50113fb09e42a2c50b4c59d84790a76b0ae77
   //same logic as part 4
   command_vel.linear.x = linear_velocity; // replace with your calculated linear velocity c_v
   command_vel.angular.z = rot_velocity; // replace with your angular calculated velocity c_w
