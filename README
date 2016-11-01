@@ -1,0 +1,27 @@
+Instruction on working on TurtleBot 
+
+1. Install sshpass which is used for making an ssh connection to the robot:
+
+sudo apt-get install sshpass
+
+
+2. Connect to the AMRL-5G network (the password is 7DigitPrecision) and make sure the robot is also connected to the same network by running the following command in the terminal:
+
+ping 192.168.1.10
+
+
+3. Put the file TurtleBot_Initialization.sh in a folder containing only the zip file of your ROS package.
+ 
+4. Go to the folder containing TurtleBot_Initialization.sh and run:
+./TurtleBot_Initialization.sh 
+
+You may have to use chmod to change the execution permission.
+
+This will automatically port your code to the robot, build it and also initialize the robot by running the required nodes on the robot.
+ 
+5- Open another terminal and ssh to the robot using the following command:
+ssh cobot-m@192.168.1.10
+
+6. cd ~/COMPSCI403/assignment5/submissions/
+
+7. rosrun compsci403_assignment5 compsci403_assignment5
