@@ -42,14 +42,26 @@ const float robot_radius = 0.18;
 const float robot_height = 0.36;
 const float delta_time = 0.05; //20 Hz equal to 0.05 seconds
 
+
 const float min_angle = -28.0;
 const float max_angle = 28.0;
 const float increment = 1.0;
 const float min_range = 0.8;
-const float max_range = 4.0; 
+const float max_range = 4.0;
+
+
+const float p_x = 320;
+const float p_y = 240;
+const float f_x = 588.446;
+const float f_y = -564.227;
+
+const float a = 3.008;
+const float b = -0.002745;
+
+
 const float in = std::numeric_limits<float>::infinity();
-const Matrix3f R;
-const Vector3f T;
+const Matrix3f R = Matrix3f::Identity();
+const Vector3f T(0.13, 0, 0.305);
 // Publisher for velocity command.
 ros::Publisher velocity_command_publisher_;
 
@@ -83,6 +95,7 @@ float FindVectorMaginitude(const float x, const float y){
 
   //didn't do this yet.
 void CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacle, float *free_path_length){
+    if(w != 0){
     const float R = (fabs(w)>0) ? (v/w): in;
     const Vector2f C(0,R);
     *is_obstacle = fabs((P - C).norm() - R) < robot_radius;
@@ -93,6 +106,14 @@ void CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacl
     else {
       *free_path_length = max_range;
     }
+  }else{ //going straight
+    *is_obstacle = fabs(P.y()) < robot_radius;
+    if(*is_obstacle){
+      *free_path_length = max(0.0f, P.x()-robot_radius);
+    }else{
+      *free_path_length = max_range;
+    }
+  }
 }
 
 bool CheckPointService(
@@ -259,10 +280,10 @@ bool PointCloudToLaserScanService(
 
 
 
-void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v0,const geometry_msgs::Point32 w0, float *linear_velocity, float *rot_velocity){
-  const Vector2f V(v0.x, w0.z);
-  float v = v0.x;
-  float w = w0.z;
+void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0, float *linear_velocity, float *rot_velocity){
+ // const Vector2f V(v0.x, w0.z);
+  float v = v0;
+  float w = w0;
   vector<Vector3f> point_cloud;
   int count = 10;
   for (unsigned int y = 0; y < Image.height; ++y) {
@@ -278,8 +299,9 @@ void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v
         // most significant 4 bits to extract the lowest 12 bits.
         const uint16_t raw_depth = ((byte0 << 8) | byte1) & 0x7FF;
         // Reconstruct 3D point from x, y, raw_depth using the camera intrinsics and add it to your point cloud.
-        Vector3f point;
+       float depth = 1/ (a + (b*raw_depth));
 
+        Vector3f point(depth * ((x - p_x)/f_x),  depth * ((y - p_y)/f_y), depth);
         point_cloud.push_back(point);
         count = 10;
     } else {
@@ -287,6 +309,8 @@ void GetCommandVel(const sensor_msgs::Image Image,const geometry_msgs::Point32 v
     }
    } 
   }
+
+
   vector<Vector3f> filtered_point_cloud;
 
   ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
@@ -421,7 +445,7 @@ bool GetCommandVelService(
   //geometry_msgs::Point32 Cv = req.v0;
   //geometry_msgs::Point32 Cw = req.w0;
 
-  GetCommandVel(req.Image,req.v0, req.w0, &linear_velocity, &rot_velocity);
+  GetCommandVel(req.Image,req.v0.x, req.w0.z, &linear_velocity, &rot_velocity);
 
 
   res.Cv.x = linear_velocity;
@@ -442,10 +466,12 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
 
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
-
+    float linear_velocity = 0;
+    float rot_velocity = 0;
+    GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
   //same logic as part 4
-  command_vel.linear.x = 0; // replace with your calculated linear velocity c_v
-  command_vel.angular.z = 0; // replace with your angular calculated velocity c_w
+  command_vel.linear.x = linear_velocity; // replace with your calculated linear velocity c_v
+  command_vel.angular.z = rot_velocity; // replace with your angular calculated velocity c_w
   velocity_command_publisher_.publish(command_vel);
 }
 
@@ -472,6 +498,7 @@ int main(int argc, char **argv) {
   //   }
   // }
   // const Vector3f T(req.T.x, req.T.y, req.T.z);
+
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
