@@ -217,7 +217,7 @@ bool ObstaclePointCloudService(
 
 bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> ranges){
   const int size = (int) max_angle - min_angle + 1;
-  ranges.resize(size); 
+  ranges.resize(size);
 
   for (size_t i = 0; i < size; ++i) {
     ranges[i] = 0; 
@@ -320,10 +320,10 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
   ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
 
   // Use your code from part 3 to convert the point cloud to a laser scan
-    vector<float> ranges; //laser scan
+  vector<float> ranges; //laser scan
 
   const int size = (int) max_angle - min_angle + 1;
-  ranges.resize(size); 
+  ranges.resize(size);
 
   for (size_t i = 0; i < ranges.size(); ++i) {
     ranges[i] = 0; //initializes
