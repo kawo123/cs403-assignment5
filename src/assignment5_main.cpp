@@ -64,6 +64,9 @@ const float b = -0.002745;
 const float in = std::numeric_limits<float>::infinity();
 const Matrix3f R = Matrix3f::Identity();
 const Vector3f T(0.13, 0, 0.305);
+
+ros::Publisher part2pub;
+
 // Publisher for velocity command.
 ros::Publisher velocity_command_publisher_;
 
@@ -630,6 +633,28 @@ void TestCheckPoint2(){
 
 }
 
+void part2tester(const sensor_msgs::PointCloud& point_cloud_msg){
+  sensor_msgs::PointCloud filtered_point_cloud_msg;
+  filtered_point_cloud_msg.header = point_cloud_msg.header;
+  // Create a Vector3f point cloud, of the same size as the input point cloud.
+  vector<Vector3f> point_cloud(point_cloud_msg.points.size());
+
+  // Copy over the input point cloud.
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    point_cloud[i] = ConvertPointToVector(point_cloud_msg.points[i]);
+  }
+
+  vector<Vector3f> filtered_point_cloud;
+  ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
+
+  filtered_point_cloud_msg.points.resize(filtered_point_cloud.size());
+  for (size_t i = 0; i < filtered_point_cloud.size(); ++i) {
+    filtered_point_cloud_msg.points[i] = ConvertVectorToPoint(filtered_point_cloud[i]);
+  }
+  ROS_INFO("part2tester called");
+  part2pub.publish(filtered_point_cloud_msg);
+}
+
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
@@ -672,10 +697,16 @@ int main(int argc, char **argv) {
   velocity_command_publisher_ =
       n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
 
+  part2pub = 
+      n.advertise<sensor_msgs::PointCloud>("testing_part_2", 1);
+
   ros::Subscriber depth_image_subscriber =
       n.subscribe("/Cobot/Kinect/Depth", 1, DepthImageCallback);
   ros::Subscriber odometry_subscriber =
       n.subscribe("/odom", 1, OdometryCallback);
+
+  ros::Subscriber part2sub =
+      n.subscribe("/Cobot/Kinect/FilteredPointCloud", 1, part2tester);
 
   ros::spin();
 
