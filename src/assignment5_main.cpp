@@ -62,8 +62,8 @@ const float b = -0.002745;
 
 
 const float in = std::numeric_limits<float>::infinity();
-const Matrix3f R = Matrix3f::Identity();
-const Vector3f T(0.13, 0, 0.305);
+Matrix3f R = Matrix3f::Identity();
+Vector3f T(0.13, 0, 0.305);
 
 ros::Publisher part2pub;
 
@@ -187,12 +187,13 @@ bool ObstaclePointCloudService(
   return true;
 }
 
-bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> ranges){
-  const int size = (int) max_angle - min_angle + 1;
+vector<float> PointCloudToLaserScan(const vector<Vector3f> point_cloud){
+  const size_t size = (int) max_angle - min_angle + 1;
+  vector<float> ranges;
   ranges.resize(size);
 
   for (size_t i = 0; i < size; ++i) {
-    ranges[i] = 0; 
+    ranges[i] = max_range;
   }
 
   for (size_t i = 0; i < point_cloud.size(); ++i) {
@@ -200,39 +201,14 @@ bool PointCloudToLaserScan(const vector<Vector3f> point_cloud, vector<float> ran
     const float rounded_angle = round(angle); 
     if(rounded_angle >= min_angle && rounded_angle <= max_angle){
       const int index = (int)(rounded_angle + 28.0); 
-      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y());//point_cloud[i].norm()
-      if(distance < ranges[index]){
+      const float distance = FindVectorMaginitude(point_cloud[i].x(), point_cloud[i].y());
+      if(distance < ranges[index] && distance >= min_range){
         ranges[index] = distance; 
       }
     }
   }
 
-
- /* vector<Vector3f> minimum_points_in_point_cloud;
-  //for each increment in ranges in laser scan
-  //look at the minimum point in the range its current looking at
-
-  
-  for(size_t i = 0; i<ranges.size(); ++i){
-    Vector3f minimum_point;
-    for(size_t j = 0 ; j <filtered_point_cloud.size(); ++j){
-
-      const float angle = atan(filtered_point_cloud[i].y() / filtered_point_cloud[i].x()) * 180 / PI; //should be in radians. depemding if increment is in radians
-
-      const float directionalangle = min_angle+increment* static_cast<float>(i);
-      if(angle<=directionalangle+increment/2 && angle>directionalangle-increment/2){ //atan is within the increment
-        float minimum_point_distance = FindVectorMaginitude(minimum_point.x(), minimum_point.y()); 
-        const float distance = FindVectorMaginitude(filtered_point_cloud[i].x(), filtered_point_cloud[i].y()); 
-          if(distance < minimum_point_distance){
-            const Vector3f P = filtered_point_cloud[i];//(filtered_point_cloud[i].x(), filtered_point_cloud[i].y());
-            minimum_point = P;
-            minimum_points_in_point_cloud.push_back(minimum_point);
-
-        }
-    }
-    }
-  }*/
-  return true;
+  return ranges;
 }
 
 bool PointCloudToLaserScanService(
@@ -247,8 +223,7 @@ bool PointCloudToLaserScanService(
 
   vector<float> ranges;
   // Process the point cloud here and convert it to a laser scan
-
-  PointCloudToLaserScan(point_cloud, ranges);
+  ranges = PointCloudToLaserScan(point_cloud);
 
   res.ranges = ranges;
   return true;
@@ -257,10 +232,7 @@ bool PointCloudToLaserScanService(
 
 
 void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0, float *linear_velocity, float *rot_velocity){
- // const Vector2f V(v0.x, w0.z);
-  float v = v0;
-  float w = w0;
-  vector<Vector3f> point_cloud;
+  vector<Vector3f> temp_point_cloud;
   int count = 10;
   for (unsigned int y = 0; y < Image.height; ++y) {
     for (unsigned int x = 0; x < Image.width; ++x) {
@@ -278,7 +250,7 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
        float depth = 1/ (a + (b*raw_depth));
 
         Vector3f point(depth * ((x - p_x)/f_x),  depth * ((y - p_y)/f_y), depth);
-        point_cloud.push_back(point);
+        temp_point_cloud.push_back(point);
         count = 10;
     } else {
       count--;
@@ -286,27 +258,21 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
    } 
   }
 
+  vector<Vector3f> point_cloud;
+  for (size_t i = 0; i < temp_point_cloud.size(); ++i){
+    Vector3f P(temp_point_cloud[i].z(), temp_point_cloud[i].x(), temp_point_cloud[i].y());
+    point_cloud.push_back(P);
+  }
+
 
   vector<Vector3f> filtered_point_cloud = ObstaclePointCloud(point_cloud);
 
-  // Use your code from part 3 to convert the point cloud to a laser scan
-  vector<float> ranges; //laser scan
-
-  const int size = (int) max_angle - min_angle + 1;
-  ranges.resize(size);
-
-  for (size_t i = 0; i < ranges.size(); ++i) {
-    ranges[i] = 0; //initializes
-  }
-
-  PointCloudToLaserScan(filtered_point_cloud, ranges);
-
-
-
+  vector<float> ranges = PointCloudToLaserScan(filtered_point_cloud);
 
   //dynamic window of minimum and maximum velocities given acceleration constraints
+  float v = v0;
+  float w = w0;
 
-//changes
   const float Vmin = v - max_linear_acceleration*delta_time; 
   const float Vmax = v + max_linear_acceleration*delta_time;
   const float Wmin = w - max_rotat_acceleration*delta_time;
@@ -324,9 +290,7 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
   const int Vsize = 51;
   const int WSize = 51;
 
-  float min_free_path = 5; //in meters?
-
-  float dynamicwindow[Vsize][WSize];
+  //float dynamicwindow[Vsize][WSize];
   float G = 0;
 
   const float alpha = 1;
@@ -337,28 +301,25 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
   for(size_t currentv = 0; currentv<Vsize; currentv = currentv+vincrement){
     for(size_t currentw = 0; currentw<WSize; currentw = currentw+wincrement){
     //admissible velocities for dynamic window
-      if(abs(currentv)<max_linear_velocity && abs(currentw)<max_rotat_velocity){
+      if(abs(currentv) < max_linear_velocity && abs(currentw) < max_rotat_velocity){
         //best velocity
         const float currentlinearvelocity = Vmin + vincrement* static_cast<float>(currentv);
         const float currentrotvelocity = Wmin + wincrement* static_cast<float>(currentw);
         float free_path_length = 0;
+        float new_free_path_length = 0;
         bool is_obstacle = false;
 
         float theta = min_angle;
         for(size_t i = 0; i<ranges.size(); ++i){
           const float radtheta = theta * PI/180;
           const Vector2f P(sin(radtheta)*ranges[i], cos(radtheta)*ranges[i]);
-          is_obstacle = CheckPoint(P, currentlinearvelocity, currentrotvelocity, &free_path_length);
-          if(is_obstacle && free_path_length < min_free_path){
-            min_free_path = free_path_length;
-            /*v = currentlinearvelocity;
-            w = currentrotvelocity;*/
-
+          is_obstacle = CheckPoint(P, currentlinearvelocity, currentrotvelocity, &new_free_path_length);
+          if(is_obstacle){
+            free_path_length = new_free_path_length;
           }
-            theta+=increment;
-          
+          theta += increment;
       } 
-        if(free_path_length >= min_range && currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
+        if(currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
           float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
           if(current_G > G){
             G = current_G;
@@ -374,43 +335,6 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
 
 *linear_velocity = v;
 *rot_velocity = w;
-
-
-/*
-
-  //compute free path and collect all the
-    //free path lengths to the obstacles
-  vector<float> values(minimum_points_in_point_cloud.size(), 0.0);
-
-
-  for(size_t i = 0; i<minimum_points_in_point_cloud.size(); ++i){
-    bool current_obstacle=false;
-    float current_path_length = max_range;
-    CheckPoint(minimum_points_in_point_cloud[i], v, w, &current_obstacle, &current_path_length);
-    values[i] = current_path_length;
-  }*/
-
-
-  // Implement dynamic windowing approach to find the best velocity command for next time step
-
-  //once you get all the possible free path lengths, you'll have to find the max of the free path lengths
-  //once you do, get the velocity of it
- /* Vector2f V_tilde = V;
-  for(size_t i =0; i<values.size(); ++i){
-    if(values[i] >= max_free_path){
-      max_free_path = values[i];
-      //get the velocity of tht direction. should store the direction though....
-      const float angle = min_angle + increment * static_cast<float>(i);
-      const Vector2f dir(cos(angle), sin(angle));
-      V_tilde = FindVectorMaginitude(dir) * values[i];
-      Cv = V_tilde; //Cv is supposed to be a geometry_msg
-      Cw = angle;
-      break;
-        //this doesnt have to do with amax or vmax at all? is tht only to help see if the V_tilde is admissible
-        //how to dynamic window? dynamic window is restrained for your amax and vmax
-    } 
-  }
-*/
 }
 
 
@@ -518,23 +442,23 @@ int main(int argc, char **argv) {
   }
 
   // Write client node to get R and T from GetTransformationSrv
-  /*ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
     ("/COMPSCI403/GetTransformation");
   compsci403_assignment5::GetTransformationSrv srv; 
   if(client.call(srv)){
     for (int row = 0; row < 3; ++row) {
       for (int col = 0; col < 3; ++col) {
-        robot_R(row, col) = srv.response.R[col * 3 + row];
+        R(row, col) = srv.response.R[col * 3 + row];
       }
     }
-    robot_T.x() = srv.response.T.x;
-    robot_T.y() = srv.response.T.y;
-    robot_T.z() = srv.response.T.z; 
+    T.x() = srv.response.T.x;
+    T.y() = srv.response.T.y;
+    T.z() = srv.response.T.z; 
 
   }else{
     ROS_ERROR("Failed to call service GetTransformationSrv"); 
     return 1; 
-  }*/
+  }
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
