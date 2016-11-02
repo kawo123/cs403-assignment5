@@ -99,25 +99,29 @@ float FindVectorMaginitude(const float x, const float y){
 
 
   //didn't do this yet.
-void CheckPoint(const Vector2f P, const float v, const float w, bool *is_obstacle, float *free_path_length){
+bool CheckPoint(const Vector2f P, const float v, const float w, float *free_path_length){
     if(w != 0){
       const float R = (fabs(w)>0) ? (v/w): in;
       const Vector2f C(0,R);
-      *is_obstacle = fabs((P - C).norm() - R) < robot_radius;
-        if (*is_obstacle) {
+      bool is_obstacle = fabs((P - C).norm() - R) < robot_radius;
+        if (is_obstacle) {
           const float theta = (w > 0) ? (atan2(P.x(), R - P.y())): atan2(P.x(), P.y() - R);
           //printf("print in middle of method: \n computed theta: %f \nexpected theta: %f\n", theta, 3 * PI/4.0);
-          *free_path_length = max(0.0f, (float)(theta*fabs(R) - robot_radius)); //
+          *free_path_length = max(0.0f, (float)(theta*fabs(R) - robot_radius));
+          return true;
         }
       else { //not an obstacle
         *free_path_length = max_range;
+        return false;
       }
     }else{ //going straight
-      *is_obstacle = fabs(P.y()) < robot_radius;
-      if(*is_obstacle){
+      bool is_obstacle = fabs(P.y()) < robot_radius;
+      if(is_obstacle){
         *free_path_length = max(0.0f, P.x()-robot_radius);
+        return true;
       }else{
         *free_path_length = max_range;
+        return false;
       }
   }
 }
@@ -133,54 +137,22 @@ bool CheckPointService(
   float free_path_length = 0.0;
 
   // Write code to compute is_obstacle and free_path_length.
-  CheckPoint(P, V.x(), V.y(), &is_obstacle, &free_path_length);
+  is_obstacle = CheckPoint(P, V.x(), V.y(), &free_path_length);
 
   res.free_path_length = free_path_length;
   res.is_obstacle = is_obstacle;
   return true;
 }
 
-bool ObstaclePointCloud(const Matrix3f R, const Vector3f T, const vector<Vector3f> point_cloud, vector<Vector3f> filtered_point_cloud) {
-  vector<Vector3f> temp_point_cloud;
+vector<Vector3f> ObstaclePointCloud(const vector<Vector3f> point_cloud) {
+  vector<Vector3f> filtered_point_cloud;
   for (size_t i = 0; i < point_cloud.size(); ++i) {
     Vector3f P = R * point_cloud[i] + T; 
-    if(P.z() <= robot_height){
-      temp_point_cloud.push_back(P); 
+    if(P.z() <= robot_height && P.z() > 0.05){
+      filtered_point_cloud.push_back(P); 
     } 
   }
-
-  const float epsilon = 0.02;
-  const float pSuccess = 0.95;
-  const float pOutliers = 0.35;
-  const size_t numIter = (size_t)round(log(1 - pSuccess)/log(1 - pow(1 - pOutliers, 3)));
-  ROS_INFO("numIter: %lu", numIter);
-
-  srand(time(NULL));
-
-  for (size_t i = 0; i < numIter; ++i){
-    ROS_INFO("iterating: %lu", i);
-    Vector3f P1 = temp_point_cloud[rand() % temp_point_cloud.size()];
-    Vector3f P2 = temp_point_cloud[rand() % temp_point_cloud.size()];
-    Vector3f P3 = temp_point_cloud[rand() % temp_point_cloud.size()];
-
-    Vector3f n = (P2 - P1).cross(P3 - P1);
-    n = n/n.norm();
-    Vector3f P0 = P1;
-
-    filtered_point_cloud.clear();
-    for (size_t i = 0; i < temp_point_cloud.size(); ++i) {
-      if (fabs(n.dot(temp_point_cloud[i] - P0)) > epsilon) {
-        filtered_point_cloud.push_back(temp_point_cloud[i]);
-      }
-    }
-
-    ROS_INFO("percent inliers: %f", 1 - (((float)filtered_point_cloud.size())/((float)point_cloud.size())));
-    if (pOutliers >= (((float)filtered_point_cloud.size())/((float)point_cloud.size()))){
-      ROS_INFO("successfuly found ground plain");
-      break;
-    }
-  }
-  return true;
+  return filtered_point_cloud;
 }
 
 bool ObstaclePointCloudService(
@@ -205,7 +177,7 @@ bool ObstaclePointCloudService(
   // robot's reference frame. Then filter out the points corresponding to ground
   // or heights larger than the height of the robot
 
-  ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
+  filtered_point_cloud = ObstaclePointCloud(point_cloud);
   
 
   res.P_prime.resize(filtered_point_cloud.size());
@@ -284,7 +256,7 @@ bool PointCloudToLaserScanService(
 
 
 
-void GetCommandVel(const Matrix3f R, const Vector3f T, const sensor_msgs::Image Image,const float v0,const float w0, float *linear_velocity, float *rot_velocity){
+void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0, float *linear_velocity, float *rot_velocity){
  // const Vector2f V(v0.x, w0.z);
   float v = v0;
   float w = w0;
@@ -315,9 +287,7 @@ void GetCommandVel(const Matrix3f R, const Vector3f T, const sensor_msgs::Image 
   }
 
 
-  vector<Vector3f> filtered_point_cloud;
-
-  ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
+  vector<Vector3f> filtered_point_cloud = ObstaclePointCloud(point_cloud);
 
   // Use your code from part 3 to convert the point cloud to a laser scan
   vector<float> ranges; //laser scan
@@ -378,7 +348,7 @@ void GetCommandVel(const Matrix3f R, const Vector3f T, const sensor_msgs::Image 
         for(size_t i = 0; i<ranges.size(); ++i){
           const float radtheta = theta * PI/180;
           const Vector2f P(sin(radtheta)*ranges[i], cos(radtheta)*ranges[i]);
-          CheckPoint(P, currentlinearvelocity, currentrotvelocity, &is_obstacle, &free_path_length);
+          is_obstacle = CheckPoint(P, currentlinearvelocity, currentrotvelocity, &free_path_length);
           if(is_obstacle && free_path_length < min_free_path){
             min_free_path = free_path_length;
             /*v = currentlinearvelocity;
@@ -389,8 +359,7 @@ void GetCommandVel(const Matrix3f R, const Vector3f T, const sensor_msgs::Image 
           
       } 
         if(free_path_length >= min_range && currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
-          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + 
-          					beta * free_path_length + tao * currentlinearvelocity);
+          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
           if(current_G > G){
             G = current_G;
             v = currentlinearvelocity;
@@ -454,7 +423,7 @@ bool GetCommandVelService(
   //geometry_msgs::Point32 Cv = req.v0;
   //geometry_msgs::Point32 Cw = req.w0;
 
-  GetCommandVel(R, T, req.Image,req.v0.x, req.w0.z, &linear_velocity, &rot_velocity);
+  GetCommandVel(req.Image,req.v0.x, req.w0.z, &linear_velocity, &rot_velocity);
 
 
   res.Cv.x = linear_velocity;
@@ -477,7 +446,7 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   // find the best velocity command and publish the velocity command
   float linear_velocity = 0;
   float rot_velocity = 0;
-  GetCommandVel(robot_R, robot_T, depth_image, v0, w0, &linear_velocity, &rot_velocity);
+  GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
 
   command_vel.linear.x = linear_velocity; // replace with your calculated linear velocity c_v
   command_vel.angular.z = rot_velocity; // replace with your angular calculated velocity c_w
@@ -491,8 +460,7 @@ void TestCheckPoint(){
   const float free_path_expected = PI/8.0;
   const Vector2f p(0.25, 0.25);
   float free_path_length = 0;
-  bool is_obstacle = false;
-  CheckPoint(p,v,w,&is_obstacle,&free_path_length);
+  bool is_obstacle = CheckPoint(p,v,w,&free_path_length);
   //reproduce code here. if u get radius to point p obstacle, you can see if it's obstacle
   //can see if it's an obstacle
     printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
@@ -509,8 +477,7 @@ void TestCheckPoint2(){
   const float free_path_expected = 3 * PI/8.0;
   const Vector2f p(0.25, 0.75);
   float free_path_length = 0;
-  bool is_obstacle = false;
-  CheckPoint(p,v,w,&is_obstacle,&free_path_length);
+  bool is_obstacle = CheckPoint(p,v,w,&free_path_length);
   //reproduce code here. if u get radius to point p obstacle, you can see if it's obstacle
   //can see if it's an obstacle
     printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
@@ -529,8 +496,7 @@ void part2tester(const sensor_msgs::PointCloud& point_cloud_msg){
     point_cloud[i] = ConvertPointToVector(point_cloud_msg.points[i]);
   }
 
-  vector<Vector3f> filtered_point_cloud;
-  ObstaclePointCloud(R, T, point_cloud, filtered_point_cloud);
+  vector<Vector3f> filtered_point_cloud = ObstaclePointCloud(point_cloud);
 
   filtered_point_cloud_msg.points.resize(filtered_point_cloud.size());
   for (size_t i = 0; i < filtered_point_cloud.size(); ++i) {
@@ -552,7 +518,7 @@ int main(int argc, char **argv) {
   }
 
   // Write client node to get R and T from GetTransformationSrv
-  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  /*ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
     ("/COMPSCI403/GetTransformation");
   compsci403_assignment5::GetTransformationSrv srv; 
   if(client.call(srv)){
@@ -568,7 +534,7 @@ int main(int argc, char **argv) {
   }else{
     ROS_ERROR("Failed to call service GetTransformationSrv"); 
     return 1; 
-  }
+  }*/
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
