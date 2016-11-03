@@ -287,13 +287,13 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
   const float Wdifference = Wmax - Wmin;
 
   //50 values in each
-  const float vincrement = Vdifference/50;
-  const float wincrement = Wdifference/50;
+  const float vincrement = Vdifference/50.0;
+  const float wincrement = Wdifference/50.0;
 
   const int VSize = 51;
   const int WSize = 51;
 
-  //float dynamicwindow[Vsize][WSize];
+  float dynamicwindow[VSize][WSize];
   float G = 0;
 
   const float alpha = 1;
@@ -305,10 +305,7 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
     for(float currentw = Wmin; currentw < Wmax; currentw += wincrement){
     //admissible velocities for dynamic window
       if(abs(currentv) < max_linear_velocity && abs(currentw) < max_rotat_velocity){
-        //best velocity
-        //const float currentlinearvelocity = Vmin + vincrement* static_cast<float>(currentv);
-        //const float currentrotvelocity = Wmin + wincrement* static_cast<float>(currentw);
-        float free_path_length = 0;
+        float free_path_length = 10.0;
         float new_free_path_length = 0;
         bool is_obstacle = false;
 
@@ -322,20 +319,37 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
           }
           theta += increment;
         } 
-        if(currentv < sqrt(2 * max_linear_acceleration * free_path_length)){
+        if(currentv < sqrt(2 * max_linear_acceleration * free_path_length) && free_path_length < 10){
           float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentw)) + beta * free_path_length + tao * currentv);
           if(current_G > G){
             G = current_G;
             v = currentv;
             w = currentw;
           }
+          dynamicwindow[(int)((currentv - Vmin)/vincrement)][(int)((currentw - Wmin)/wincrement)] = current_G;
         }
+        else {
+          dynamicwindow[(int)((currentv - Vmin)/vincrement)][(int)((currentw - Wmin)/wincrement)] = 0.0;
+        }
+      }
+      else {
+        dynamicwindow[(int)((currentv - Vmin)/vincrement)][(int)((currentw - Wmin)/wincrement)] = 0.0;
       }
     }
   }
 
-*linear_velocity = v;
-*rot_velocity = w;
+  /*for (size_t i = 0; i < VSize; ++i){
+    for (size_t j = 0; j < WSize; ++j){
+      printf("[%f]", dynamicwindow[i][j]);
+    }
+    printf("\n");
+  }*/
+
+  *linear_velocity = v;
+  *rot_velocity = w;
+  ROS_INFO("G: %f", G);
+  ROS_INFO("V: %f, W: %f", v, w);
+  //ROS_INFO("sentV: %f, sentW: %f", *linear_velocity, *rot_velocity);
 }
 
 
@@ -367,17 +381,18 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   // Current velocity
   const float v0 = last_odometry.twist.twist.linear.x;
   const float w0 = last_odometry.twist.twist.angular.z;
-  ROS_INFO("DepthImageCallback 1");
+  ROS_INFO("DepthImageCallback called 1");
 
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
   float linear_velocity = 0;
   float rot_velocity = 0;
   GetCommandVel(depth_image, v0, w0, &linear_velocity, &rot_velocity);
+  //ROS_INFO("recievedV: %f, receivedW: %f", linear_velocity, rot_velocity);
 
   command_vel.linear.x = linear_velocity; // replace with your calculated linear velocity c_v
   command_vel.angular.z = rot_velocity; // replace with your angular calculated velocity c_w
-  ROS_INFO("DepthImageCallback called");
+  ROS_INFO("DepthImageCallback called 2");
   velocity_command_publisher_.publish(command_vel);
 }
 
@@ -391,8 +406,8 @@ void TestCheckPoint(){
   bool is_obstacle = CheckPoint(p,v,w,&free_path_length);
   //reproduce code here. if u get radius to point p obstacle, you can see if it's obstacle
   //can see if it's an obstacle
-    printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
-        printf("\nEXPECTED free_path_length: %f \n EXPECTED theta expected: %f\n", free_path_expected, theta_expected);
+  printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
+  printf("\nEXPECTED free_path_length: %f \n EXPECTED theta expected: %f\n", free_path_expected, theta_expected);
 
 }
 
