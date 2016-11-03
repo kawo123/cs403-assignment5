@@ -10,6 +10,7 @@
 #include <geometry_msgs/Point32.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud.h>
+#include <sensor_msgs/ChannelFloat32.h>
 #include <sensor_msgs/Image.h>
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
@@ -67,6 +68,7 @@ Vector3f T(0.13, 0, 0.305);
 
 ros::Publisher part2pub;
 ros::Publisher part3pub;
+ros::Publisher part4pub;
 
 // Publisher for velocity command.
 ros::Publisher velocity_command_publisher_;
@@ -281,14 +283,14 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
 
 
   //size of acceleration dynamic window
-  const float Vdifference = Vmax- Vmin;
+  const float Vdifference = Vmax - Vmin;
   const float Wdifference = Wmax - Wmin;
 
   //50 values in each
   const float vincrement = Vdifference/50;
   const float wincrement = Wdifference/50;
 
-  const int Vsize = 51;
+  const int VSize = 51;
   const int WSize = 51;
 
   //float dynamicwindow[Vsize][WSize];
@@ -299,37 +301,35 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
   const float tao = 1;
   const float sigma = 1;
 
-  for(size_t currentv = 0; currentv<Vsize; currentv = currentv+vincrement){
-    for(size_t currentw = 0; currentw<WSize; currentw = currentw+wincrement){
+  for(float currentv = Vmin; currentv < Vmax; currentv += vincrement){
+    for(float currentw = Wmin; currentw < Wmax; currentw += wincrement){
     //admissible velocities for dynamic window
       if(abs(currentv) < max_linear_velocity && abs(currentw) < max_rotat_velocity){
         //best velocity
-        const float currentlinearvelocity = Vmin + vincrement* static_cast<float>(currentv);
-        const float currentrotvelocity = Wmin + wincrement* static_cast<float>(currentw);
+        //const float currentlinearvelocity = Vmin + vincrement* static_cast<float>(currentv);
+        //const float currentrotvelocity = Wmin + wincrement* static_cast<float>(currentw);
         float free_path_length = 0;
         float new_free_path_length = 0;
         bool is_obstacle = false;
 
         float theta = min_angle;
-        for(size_t i = 0; i<ranges.size(); ++i){
+        for(size_t i = 0; i < ranges.size(); ++i){
           const float radtheta = theta * PI/180;
           const Vector2f P(cos(radtheta)*ranges[i], sin(radtheta)*ranges[i]);
-          is_obstacle = CheckPoint(P, currentlinearvelocity, currentrotvelocity, &new_free_path_length);
-          if(is_obstacle){
+          is_obstacle = CheckPoint(P, currentv, currentw, &new_free_path_length);
+          if(is_obstacle && new_free_path_length < free_path_length){
             free_path_length = new_free_path_length;
           }
           theta += increment;
-      } 
-        if(currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
-          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
+        } 
+        if(currentv < sqrt(2 * max_linear_acceleration * free_path_length)){
+          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentw)) + beta * free_path_length + tao * currentv);
           if(current_G > G){
             G = current_G;
-            v = currentlinearvelocity;
-            w = currentrotvelocity;
+            v = currentv;
+            w = currentw;
           }
         }
-
-
       }
     }
   }
@@ -359,6 +359,7 @@ bool GetCommandVelService(
 
 void OdometryCallback(const nav_msgs::Odometry& odometry) {
   last_odometry = odometry;
+  ROS_INFO("OdometryCallback called");
 }
 
 void DepthImageCallback(const sensor_msgs::Image& depth_image) {
@@ -366,6 +367,7 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
   // Current velocity
   const float v0 = last_odometry.twist.twist.linear.x;
   const float w0 = last_odometry.twist.twist.angular.z;
+  ROS_INFO("DepthImageCallback 1");
 
   // Use your code from all other parts to process the depth image, 
   // find the best velocity command and publish the velocity command
@@ -375,6 +377,7 @@ void DepthImageCallback(const sensor_msgs::Image& depth_image) {
 
   command_vel.linear.x = linear_velocity; // replace with your calculated linear velocity c_v
   command_vel.angular.z = rot_velocity; // replace with your angular calculated velocity c_w
+  ROS_INFO("DepthImageCallback called");
   velocity_command_publisher_.publish(command_vel);
 }
 
@@ -461,6 +464,146 @@ void part3tester(const sensor_msgs::PointCloud& point_cloud_msg){
   part3pub.publish(laser_point_cloud_msg);
 }
 
+void part4tester(const sensor_msgs::Image& Image){
+  const float v0 = last_odometry.twist.twist.linear.x;
+  const float w0 = last_odometry.twist.twist.angular.z;
+
+
+  vector<Vector3f> temp_point_cloud;
+  int count = 10;
+  for (unsigned int y = 0; y < Image.height; ++y) {
+    for (unsigned int x = 0; x < Image.width; ++x) {
+      // Add code here to only process only every nth pixel
+      if(count <= 0){
+        uint16_t byte0 = Image.data[2 * (x + y * Image.width) + 0];
+        uint16_t byte1 = Image.data[2 * (x + y * Image.width) + 1];
+        if (!Image.is_bigendian) {
+          std::swap(byte0, byte1);
+        }
+        // Combine the two bytes to form a 16 bit value, and disregard the
+        // most significant 4 bits to extract the lowest 12 bits.
+        const uint16_t raw_depth = ((byte0 << 8) | byte1) & 0x7FF;
+        // Reconstruct 3D point from x, y, raw_depth using the camera intrinsics and add it to your point cloud.
+       float depth = 1/ (a + (b*raw_depth));
+
+        Vector3f point(depth * ((x - p_x)/f_x),  depth * ((y - p_y)/f_y), depth);
+        temp_point_cloud.push_back(point);
+        count = 10;
+    } else {
+      count--;
+    }
+   } 
+  }
+
+  vector<Vector3f> point_cloud;
+  for (size_t i = 0; i < temp_point_cloud.size(); ++i){
+    Vector3f P(temp_point_cloud[i].z(), temp_point_cloud[i].x(), temp_point_cloud[i].y());
+    point_cloud.push_back(P);
+  }
+
+
+  /*vector<Vector3f> filtered_point_cloud = ObstaclePointCloud(point_cloud);
+
+  vector<float> ranges = PointCloudToLaserScan(filtered_point_cloud);
+
+  //dynamic window of minimum and maximum velocities given acceleration constraints
+  float v = v0;
+  float w = w0;
+
+  const float Vmin = v - max_linear_acceleration*delta_time; 
+  const float Vmax = v + max_linear_acceleration*delta_time;
+  const float Wmin = w - max_rotat_acceleration*delta_time;
+  const float Wmax = w + max_rotat_acceleration*delta_time;
+
+
+  //size of acceleration dynamic window
+  const float Vdifference = Vmax- Vmin;
+  const float Wdifference = Wmax - Wmin;
+
+  //50 values in each
+  const float vincrement = Vdifference/50;
+  const float wincrement = Wdifference/50;
+
+  const int VSize = 51;
+  const int WSize = 51;
+
+  sensor_msgs::PointCloud dynamicwindow;
+  dynamicwindow.header = Image.header;
+  dynamicwindow.points.resize(VSize * WSize);
+  for (size_t i = 0; i < VSize; ++i){
+    for (size_t j = 0; j < WSize; ++i){
+      Point32 point;
+      point.x = (float)i*0.1;
+      point.y = (float)j*0.1;
+      point.z = 0;
+      dynamicwindow.points[i + j] = point;
+    }
+  }
+  sensor_msgs::ChannelFloat32 channel;
+  channel.name = "rgb";
+  channel.values.resize(VSize * WSize);
+
+  float G = 0;
+
+  const float alpha = 1;
+  const float beta = 1;
+  const float tao = 1;
+  const float sigma = 1;
+
+  size_t k = 0;
+  for(size_t currentv = 0; currentv<VSize; currentv = currentv + vincrement){
+    for(size_t currentw = 0; currentw<WSize; currentw = currentw + wincrement){
+    //admissible velocities for dynamic window
+      if(abs(currentv) < max_linear_velocity && abs(currentw) < max_rotat_velocity){
+        //best velocity
+        const float currentlinearvelocity = Vmin + vincrement* static_cast<float>(currentv);
+        const float currentrotvelocity = Wmin + wincrement* static_cast<float>(currentw);
+        float free_path_length = 0;
+        float new_free_path_length = 0;
+        bool is_obstacle = false;
+
+        float theta = min_angle;
+        for(size_t i = 0; i<ranges.size(); ++i){
+          const float radtheta = theta * PI/180;
+          const Vector2f P(cos(radtheta)*ranges[i], sin(radtheta)*ranges[i]);
+          is_obstacle = CheckPoint(P, currentlinearvelocity, currentrotvelocity, &new_free_path_length);
+          if(is_obstacle){
+            free_path_length = new_free_path_length;
+          }
+          theta += increment;
+        } 
+        if(currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
+          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
+          if(current_G > G){
+            G = current_G;
+            v = currentlinearvelocity;
+            w = currentrotvelocity;
+          }
+          float value = 0;
+          channel.values[k] = value;
+        }
+        else {
+          channel.values[k] = 0;
+        }
+      }
+      else {
+        channel.values[k] = 0;
+      }
+      ++k;
+    }
+  }
+  dynamicwindow.channels[0] = channel;*/
+
+  sensor_msgs::PointCloud point_cloud_msg;
+  point_cloud_msg.header = Image.header;
+  point_cloud_msg.points.resize(point_cloud.size());
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    point_cloud_msg.points[i] = ConvertVectorToPoint(point_cloud[i]);
+  }
+  ROS_INFO("part4tester called");
+  part4pub.publish(point_cloud_msg);
+}
+
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
@@ -507,6 +650,8 @@ int main(int argc, char **argv) {
       n.advertise<sensor_msgs::PointCloud>("testing_part_2", 1);
   part3pub = 
       n.advertise<sensor_msgs::PointCloud>("testing_part_3", 1);
+  part4pub = 
+      n.advertise<sensor_msgs::PointCloud>("testing_part_4", 1);
 
   ros::Subscriber depth_image_subscriber =
       n.subscribe("/Cobot/Kinect/Depth", 1, DepthImageCallback);
@@ -517,6 +662,8 @@ int main(int argc, char **argv) {
       n.subscribe("/Cobot/Kinect/FilteredPointCloud", 1, part2tester);
   ros::Subscriber part3sub =
       n.subscribe("testing_part_2", 1, part3tester);
+  /*ros::Subscriber part4sub =
+      n.subscribe("/Cobot/Kinect/Depth", 1, part4tester);*/
 
   ros::spin();
 
