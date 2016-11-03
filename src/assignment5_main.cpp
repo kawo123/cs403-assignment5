@@ -66,6 +66,7 @@ Matrix3f R = Matrix3f::Identity();
 Vector3f T(0.13, 0, 0.305);
 
 ros::Publisher part2pub;
+ros::Publisher part3pub;
 
 // Publisher for velocity command.
 ros::Publisher velocity_command_publisher_;
@@ -312,7 +313,7 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
         float theta = min_angle;
         for(size_t i = 0; i<ranges.size(); ++i){
           const float radtheta = theta * PI/180;
-          const Vector2f P(sin(radtheta)*ranges[i], cos(radtheta)*ranges[i]);
+          const Vector2f P(cos(radtheta)*ranges[i], sin(radtheta)*ranges[i]);
           is_obstacle = CheckPoint(P, currentlinearvelocity, currentrotvelocity, &new_free_path_length);
           if(is_obstacle){
             free_path_length = new_free_path_length;
@@ -430,6 +431,36 @@ void part2tester(const sensor_msgs::PointCloud& point_cloud_msg){
   part2pub.publish(filtered_point_cloud_msg);
 }
 
+void part3tester(const sensor_msgs::PointCloud& point_cloud_msg){
+  sensor_msgs::PointCloud laser_point_cloud_msg;
+  laser_point_cloud_msg.header = point_cloud_msg.header;
+  // Create a Vector3f point cloud, of the same size as the input point cloud.
+  vector<Vector3f> point_cloud(point_cloud_msg.points.size());
+
+  // Copy over the input point cloud.
+  for (size_t i = 0; i < point_cloud.size(); ++i) {
+    point_cloud[i] = ConvertPointToVector(point_cloud_msg.points[i]);
+  }
+
+  vector<float> ranges = PointCloudToLaserScan(point_cloud);
+
+  vector<Vector3f> laser_point_cloud;
+  float theta = min_angle;
+  for(size_t i = 0; i < ranges.size(); ++i){
+    const float radtheta = theta * PI/180;
+    const Vector3f P(cos(radtheta)*ranges[i], sin(radtheta)*ranges[i], 0);
+    laser_point_cloud.push_back(P);
+    theta += increment;
+  } 
+
+  laser_point_cloud_msg.points.resize(laser_point_cloud.size());
+  for (size_t i = 0; i < laser_point_cloud.size(); ++i) {
+    laser_point_cloud_msg.points[i] = ConvertVectorToPoint(laser_point_cloud[i]);
+  }
+  ROS_INFO("part3tester called");
+  part3pub.publish(laser_point_cloud_msg);
+}
+
 
 int main(int argc, char **argv) {
   ros::init(argc, argv, "compsci403_assignment5");
@@ -442,7 +473,7 @@ int main(int argc, char **argv) {
   }
 
   // Write client node to get R and T from GetTransformationSrv
-  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  /*ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
     ("/COMPSCI403/GetTransformation");
   compsci403_assignment5::GetTransformationSrv srv; 
   if(client.call(srv)){
@@ -458,7 +489,7 @@ int main(int argc, char **argv) {
   }else{
     ROS_ERROR("Failed to call service GetTransformationSrv"); 
     return 1; 
-  }
+  }*/
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
@@ -474,6 +505,8 @@ int main(int argc, char **argv) {
 
   part2pub = 
       n.advertise<sensor_msgs::PointCloud>("testing_part_2", 1);
+  part3pub = 
+      n.advertise<sensor_msgs::PointCloud>("testing_part_3", 1);
 
   ros::Subscriber depth_image_subscriber =
       n.subscribe("/Cobot/Kinect/Depth", 1, DepthImageCallback);
@@ -482,6 +515,8 @@ int main(int argc, char **argv) {
 
   ros::Subscriber part2sub =
       n.subscribe("/Cobot/Kinect/FilteredPointCloud", 1, part2tester);
+  ros::Subscriber part3sub =
+      n.subscribe("testing_part_2", 1, part3tester);
 
   ros::spin();
 
