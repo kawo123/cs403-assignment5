@@ -263,7 +263,7 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
 
   vector<Vector3f> point_cloud;
   for (size_t i = 0; i < temp_point_cloud.size(); ++i){
-    Vector3f P(temp_point_cloud[i].z(), temp_point_cloud[i].x(), temp_point_cloud[i].y());
+    Vector3f P(temp_point_cloud[i].z(), -temp_point_cloud[i].x(), temp_point_cloud[i].y());
     point_cloud.push_back(P);
   }
 
@@ -298,7 +298,7 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
 
   const float alpha = 1;
   const float beta = 1;
-  const float tao = 1;
+  const float tao = 8;
   const float sigma = 1;
 
   for(float currentv = Vmin; currentv < Vmax; currentv += vincrement){
@@ -326,21 +326,21 @@ void GetCommandVel(const sensor_msgs::Image Image,const float v0,const float w0,
             v = currentv;
             w = currentw;
           }
-          dynamicwindow[(int)((currentv - Vmin)/vincrement)][(int)((currentw - Wmin)/wincrement)] = current_G;
+          //dynamicwindow[(int)round(((currentv - Vmin)/vincrement))][(int)round(((currentw - Wmin)/wincrement))] = current_G;
         }
         else {
-          dynamicwindow[(int)((currentv - Vmin)/vincrement)][(int)((currentw - Wmin)/wincrement)] = 0.0;
+          //dynamicwindow[(int)round(((currentv - Vmin)/vincrement))][(int)round(((currentw - Wmin)/wincrement))] = 0.0;
         }
       }
       else {
-        dynamicwindow[(int)((currentv - Vmin)/vincrement)][(int)((currentw - Wmin)/wincrement)] = 0.0;
+        //dynamicwindow[(int)round(((currentv - Vmin)/vincrement))][(int)round(((currentw - Wmin)/wincrement))] = 0.0;
       }
     }
   }
 
   /*for (size_t i = 0; i < VSize; ++i){
     for (size_t j = 0; j < WSize; ++j){
-      printf("[%f]", dynamicwindow[i][j]);
+      printf("%.1f|", dynamicwindow[i][j]);
     }
     printf("\n");
   }*/
@@ -512,102 +512,9 @@ void part4tester(const sensor_msgs::Image& Image){
 
   vector<Vector3f> point_cloud;
   for (size_t i = 0; i < temp_point_cloud.size(); ++i){
-    Vector3f P(temp_point_cloud[i].z(), temp_point_cloud[i].x(), temp_point_cloud[i].y());
+    Vector3f P(temp_point_cloud[i].z(), -temp_point_cloud[i].x(), temp_point_cloud[i].y());
     point_cloud.push_back(P);
   }
-
-
-  /*vector<Vector3f> filtered_point_cloud = ObstaclePointCloud(point_cloud);
-
-  vector<float> ranges = PointCloudToLaserScan(filtered_point_cloud);
-
-  //dynamic window of minimum and maximum velocities given acceleration constraints
-  float v = v0;
-  float w = w0;
-
-  const float Vmin = v - max_linear_acceleration*delta_time; 
-  const float Vmax = v + max_linear_acceleration*delta_time;
-  const float Wmin = w - max_rotat_acceleration*delta_time;
-  const float Wmax = w + max_rotat_acceleration*delta_time;
-
-
-  //size of acceleration dynamic window
-  const float Vdifference = Vmax- Vmin;
-  const float Wdifference = Wmax - Wmin;
-
-  //50 values in each
-  const float vincrement = Vdifference/50;
-  const float wincrement = Wdifference/50;
-
-  const int VSize = 51;
-  const int WSize = 51;
-
-  sensor_msgs::PointCloud dynamicwindow;
-  dynamicwindow.header = Image.header;
-  dynamicwindow.points.resize(VSize * WSize);
-  for (size_t i = 0; i < VSize; ++i){
-    for (size_t j = 0; j < WSize; ++i){
-      Point32 point;
-      point.x = (float)i*0.1;
-      point.y = (float)j*0.1;
-      point.z = 0;
-      dynamicwindow.points[i + j] = point;
-    }
-  }
-  sensor_msgs::ChannelFloat32 channel;
-  channel.name = "rgb";
-  channel.values.resize(VSize * WSize);
-
-  float G = 0;
-
-  const float alpha = 1;
-  const float beta = 1;
-  const float tao = 1;
-  const float sigma = 1;
-
-  size_t k = 0;
-  for(size_t currentv = 0; currentv<VSize; currentv = currentv + vincrement){
-    for(size_t currentw = 0; currentw<WSize; currentw = currentw + wincrement){
-    //admissible velocities for dynamic window
-      if(abs(currentv) < max_linear_velocity && abs(currentw) < max_rotat_velocity){
-        //best velocity
-        const float currentlinearvelocity = Vmin + vincrement* static_cast<float>(currentv);
-        const float currentrotvelocity = Wmin + wincrement* static_cast<float>(currentw);
-        float free_path_length = 0;
-        float new_free_path_length = 0;
-        bool is_obstacle = false;
-
-        float theta = min_angle;
-        for(size_t i = 0; i<ranges.size(); ++i){
-          const float radtheta = theta * PI/180;
-          const Vector2f P(cos(radtheta)*ranges[i], sin(radtheta)*ranges[i]);
-          is_obstacle = CheckPoint(P, currentlinearvelocity, currentrotvelocity, &new_free_path_length);
-          if(is_obstacle){
-            free_path_length = new_free_path_length;
-          }
-          theta += increment;
-        } 
-        if(currentlinearvelocity < sqrt(2 * max_linear_acceleration * free_path_length)){
-          float current_G = sigma * (alpha * (max_rotat_velocity-abs(currentrotvelocity)) + beta * free_path_length + tao * currentlinearvelocity);
-          if(current_G > G){
-            G = current_G;
-            v = currentlinearvelocity;
-            w = currentrotvelocity;
-          }
-          float value = 0;
-          channel.values[k] = value;
-        }
-        else {
-          channel.values[k] = 0;
-        }
-      }
-      else {
-        channel.values[k] = 0;
-      }
-      ++k;
-    }
-  }
-  dynamicwindow.channels[0] = channel;*/
 
   sensor_msgs::PointCloud point_cloud_msg;
   point_cloud_msg.header = Image.header;
@@ -631,7 +538,7 @@ int main(int argc, char **argv) {
   }
 
   // Write client node to get R and T from GetTransformationSrv
-  /*ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
     ("/COMPSCI403/GetTransformation");
   compsci403_assignment5::GetTransformationSrv srv; 
   if(client.call(srv)){
@@ -647,7 +554,7 @@ int main(int argc, char **argv) {
   }else{
     ROS_ERROR("Failed to call service GetTransformationSrv"); 
     return 1; 
-  }*/
+  }
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
@@ -661,23 +568,23 @@ int main(int argc, char **argv) {
   velocity_command_publisher_ =
       n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1);
 
-  part2pub = 
+  /*part2pub = 
       n.advertise<sensor_msgs::PointCloud>("testing_part_2", 1);
   part3pub = 
       n.advertise<sensor_msgs::PointCloud>("testing_part_3", 1);
   part4pub = 
-      n.advertise<sensor_msgs::PointCloud>("testing_part_4", 1);
+      n.advertise<sensor_msgs::PointCloud>("testing_part_4", 1);*/
 
   ros::Subscriber depth_image_subscriber =
       n.subscribe("/Cobot/Kinect/Depth", 1, DepthImageCallback);
   ros::Subscriber odometry_subscriber =
       n.subscribe("/odom", 1, OdometryCallback);
 
-  ros::Subscriber part2sub =
+  /*ros::Subscriber part2sub =
       n.subscribe("/Cobot/Kinect/FilteredPointCloud", 1, part2tester);
   ros::Subscriber part3sub =
       n.subscribe("testing_part_2", 1, part3tester);
-  /*ros::Subscriber part4sub =
+  ros::Subscriber part4sub =
       n.subscribe("/Cobot/Kinect/Depth", 1, part4tester);*/
 
   ros::spin();
