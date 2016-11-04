@@ -100,11 +100,13 @@ float FindVectorMaginitude(const float x, const float y){
   return (sqrt(pow(x, 2)+pow(y, 2))); 
 }
 
-
-  //didn't do this yet.
 bool CheckPoint(const Vector2f P, const float v, const float w, float *free_path_length){
-    if(w != 0){
-      const float R = (fabs(w)>0) ? (v/w): in;
+    if (v < 0) {
+      *free_path_length = max_range;
+      return false;
+    }
+    if (w != 0){
+      const float R = v/w;//(fabs(w)>0) ? (v/w): in;
       const Vector2f C(0,R);
       bool is_obstacle = fabs((P - C).norm() - R) < robot_radius;
         if (is_obstacle) {
@@ -423,8 +425,8 @@ void TestCheckPoint2(){
   bool is_obstacle = CheckPoint(p,v,w,&free_path_length);
   //reproduce code here. if u get radius to point p obstacle, you can see if it's obstacle
   //can see if it's an obstacle
-    printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
-        printf("\nEXPECTED free_path_length: %f \n EXPECTED theta expected: %f\n", free_path_expected, theta_expected);
+  printf("free_path_length: %f \n is_obstacle: %d", free_path_length, is_obstacle);
+  printf("\nEXPECTED free_path_length: %f \n EXPECTED theta expected: %f\n", free_path_expected, theta_expected);
 
 }
 
@@ -538,7 +540,7 @@ int main(int argc, char **argv) {
   }
 
   // Write client node to get R and T from GetTransformationSrv
-  ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
+  /*ros::ServiceClient client = n.serviceClient<compsci403_assignment5::GetTransformationSrv>
     ("/COMPSCI403/GetTransformation");
   compsci403_assignment5::GetTransformationSrv srv; 
   if(client.call(srv)){
@@ -554,7 +556,7 @@ int main(int argc, char **argv) {
   }else{
     ROS_ERROR("Failed to call service GetTransformationSrv"); 
     return 1; 
-  }
+  }*/
 
   ros::ServiceServer service1 = n.advertiseService(
       "/COMPSCI403/CheckPoint", CheckPointService);
